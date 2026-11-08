@@ -410,6 +410,14 @@ export const DEFAULT_CAMPUS_SPAWNS: SpawnPoint[] = [
 ];
 
 /**
+ * Fortnite-Style Downed (DBNO) & Revive Constants
+ */
+export const DOWNED_MAX_HP = 100;
+export const REVIVE_DURATION_SEC = 5.0;
+export const REVIVED_HP = 20;
+export const RESPAWN_COOLDOWN_SEC = 5.0;
+
+/**
  * Selects the safest / farthest spawn point from active enemies and avoids already occupied spawns
  * so every player/bot spawns at a distinct spawn point.
  */

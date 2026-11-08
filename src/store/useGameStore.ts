@@ -14,6 +14,10 @@ import {
   VAPE_SMOKE_RADIUS,
   VAPE_SMOKE_DURATION_MS,
   PLAYER_DIMENSIONS,
+  DOWNED_MAX_HP,
+  REVIVE_DURATION_SEC,
+  REVIVED_HP,
+  RESPAWN_COOLDOWN_SEC,
   canFireWeaponOnScooter,
   stepThrownVapeProjectile,
   selectSafestSpawnPoint,
@@ -134,6 +138,8 @@ export interface RemoteActor {
   rotation: [number, number];
   crouching: boolean;
   sliding?: boolean;
+  isDowned?: boolean;
+  downedHp?: number;
   ads: boolean;
   ridingScooter?: boolean;
   stunnedUntil?: number; // Timestamp until which actor is knocked out by Lidl Scanner
@@ -294,6 +300,18 @@ export interface GameStoreState {
   hitmarkerActive: boolean;
   hitmarkerHeadshot: boolean;
   damageFlashAlpha: number;
+  damageVignetteAlpha: number;
+  droneIntroTimer: number;
+
+  // Fortnite-Style Downed (DBNO) & Revive State
+  isDowned: boolean;
+  downedHp: number;
+  maxDownedHp: number;
+  reviveProgress: number;
+  isBeingRevived: boolean;
+  revivingTeammateName: string | null;
+  localRevivingTargetId: string | null;
+  respawnCooldownSec: number;
 
   // Match Scores
   alphaScore: number;
@@ -369,6 +387,16 @@ export interface GameStoreState {
   respawnPlayer: () => void;
   tickMatchTimer: (dt: number) => void;
 
+  // DBNO & Revive Actions
+  startReviveTeammate: (targetId: string) => void;
+  stepReviveProgress: (dt: number) => { completed: boolean; progress: number };
+  completeReviveTeammate: () => void;
+  completeReviveByTeammate: () => void;
+  cancelReviveTeammate: () => void;
+  setBeingRevived: (beingRevived: boolean, reviverId: string | null) => void;
+  setRemotePlayerRevived: (targetId: string) => void;
+  triggerDamageVignette: (amount?: number) => void;
+
   // Remote & Bot State Actions
   syncRemotePlayers: (players: Record<string, RemoteActor>) => void;
   updateRemoteTransform: (
@@ -390,6 +418,8 @@ export interface GameStoreState {
       deaths?: number;
       score?: number;
       ready?: boolean;
+      isDowned?: boolean;
+      downedHp?: number;
     }
   ) => void;
   removeRemotePlayer: (id: string) => void;
@@ -711,6 +741,18 @@ export const useGameStore = create<GameStoreState>()(
       hitmarkerActive: false,
       hitmarkerHeadshot: false,
       damageFlashAlpha: 0,
+      damageVignetteAlpha: 0,
+      droneIntroTimer: 1.8,
+
+      // Fortnite-Style Downed (DBNO) & Revive State
+      isDowned: false,
+      downedHp: 100,
+      maxDownedHp: 100,
+      reviveProgress: 0,
+      isBeingRevived: false,
+      revivingTeammateName: null,
+      localRevivingTargetId: null,
+      respawnCooldownSec: 0,
 
       alphaScore: 0,
       bravoScore: 0,
@@ -1092,6 +1134,7 @@ export const useGameStore = create<GameStoreState>()(
 
         const wasAliveInMatch =
           !state.isEliminated &&
+          !state.isDowned &&
           (state.screen === 'playing' ||
             state.screen === 'paused' ||
             state.screen === 'select_class');
@@ -1127,6 +1170,11 @@ export const useGameStore = create<GameStoreState>()(
           isAds: false,
           isSliding: false,
           isEliminated: false,
+          isDowned: false,
+          downedHp: DOWNED_MAX_HP,
+          maxDownedHp: DOWNED_MAX_HP,
+          respawnCooldownSec: 0,
+          droneIntroTimer: 1.8,
           eliminatedBy: null,
           activeSpawnPoint: safestSpawn,
           respawnNonce: s.respawnNonce + 1,
@@ -1143,7 +1191,7 @@ export const useGameStore = create<GameStoreState>()(
 
       fireRound: () => {
         const state = get();
-        if (state.isEliminated || Date.now() < state.stunnedUntil) return false;
+        if (state.isEliminated || state.isDowned || Date.now() < state.stunnedUntil) return false;
         // E-Scooter firing rule: Cannot shoot from E-Scooters EXCEPT with the Lidl Barcode Scanner!
         if (!canFireWeaponOnScooter(state.selectedClass, Boolean(state.ridingScooterId))) {
           return false;
@@ -1186,7 +1234,7 @@ export const useGameStore = create<GameStoreState>()(
 
       setAds: (ads) =>
         set((state) => ({
-          isAds: state.isReloading || state.isEliminated ? false : ads,
+          isAds: state.isReloading || state.isEliminated || state.isDowned ? false : ads,
         })),
 
       setCrouching: (crouching) => set({ isCrouching: crouching }),
@@ -1220,32 +1268,105 @@ export const useGameStore = create<GameStoreState>()(
       applyPlayerDamage: (amount, attacker) => {
         const state = get();
         if (state.screen !== 'playing' || state.isEliminated) return;
+
+        // Clean up scooter mount so E-Scooter is NEVER permanently locked!
+        let nextScooters = state.scooters;
+        if (state.ridingScooterId) {
+          nextScooters = state.scooters.map((sc) =>
+            sc.id === state.ridingScooterId ? { ...sc, mountedByPlayerId: null } : sc
+          );
+        }
+
+        // If player is already downed (DBNO), damage applies directly to downedHp
+        if (state.isDowned) {
+          const nextDownedHp = Math.max(0, state.downedHp - amount);
+          if (nextDownedHp <= 0) {
+            const killerInfo: EliminatedByInfo = attacker || {
+              name: 'Gegner',
+              team: state.playerTeam === 'alpha' ? 'bravo' : 'alpha',
+              hp: 100,
+              maxHp: 100,
+              weaponClass: 'assault',
+            };
+            set((s) => ({
+              isEliminated: true,
+              isDowned: false,
+              downedHp: 0,
+              eliminatedBy: killerInfo,
+              respawnCooldownSec: RESPAWN_COOLDOWN_SEC,
+              localDeaths: s.localDeaths + 1,
+              bravoScore: s.playerTeam === 'alpha' ? s.bravoScore + 1 : s.bravoScore,
+              alphaScore: s.playerTeam === 'bravo' ? s.alphaScore + 1 : s.alphaScore,
+              damageFlashAlpha: 0.8,
+              damageVignetteAlpha: 0.9,
+              ridingScooterId: null,
+              scooters: nextScooters,
+              isBeingRevived: false,
+              revivingTeammateName: null,
+              localRevivingTargetId: null,
+            }));
+          } else {
+            set({
+              downedHp: nextDownedHp,
+              damageVignetteAlpha: Math.min(1.0, state.damageVignetteAlpha + 0.4),
+              damageFlashAlpha: 0.5,
+            });
+          }
+          return;
+        }
+
         const nextHp = Math.max(0, state.hp - amount);
         if (nextHp <= 0) {
           const killerInfo: EliminatedByInfo = attacker || {
-            name: 'mousepad killer',
+            name: 'Gegner',
             team: state.playerTeam === 'alpha' ? 'bravo' : 'alpha',
             hp: 100,
             maxHp: 100,
             weaponClass: 'assault',
           };
-          set((s) => ({
-            hp: 0,
-            isEliminated: true,
-            eliminatedBy: killerInfo,
-            isAds: false,
-            isSliding: false,
-            isCrouching: false,
-            ridingScooterId: null,
-            localDeaths: s.localDeaths + 1,
-            bravoScore: s.playerTeam === 'alpha' ? s.bravoScore + 1 : s.bravoScore,
-            alphaScore: s.playerTeam === 'bravo' ? s.alphaScore + 1 : s.alphaScore,
-            damageFlashAlpha: 0.75,
-          }));
+
+          // Fortnite-style DBNO: in team modes (TDM/BOTS), player is knocked down (crawling, 100 Downed HP)
+          const isTeamMode = state.selectedModeId !== 'FFA';
+          if (isTeamMode) {
+            set((s) => ({
+              hp: 0,
+              isDowned: true,
+              downedHp: DOWNED_MAX_HP,
+              maxDownedHp: DOWNED_MAX_HP,
+              isAds: false,
+              isSliding: false,
+              isCrouching: true,
+              ridingScooterId: null,
+              scooters: nextScooters,
+              damageVignetteAlpha: 0.9,
+              damageFlashAlpha: 0.8,
+              eliminatedBy: killerInfo,
+            }));
+          } else {
+            // FFA: direct elimination with 5-second respawn cooldown
+            set((s) => ({
+              hp: 0,
+              isEliminated: true,
+              isDowned: false,
+              respawnCooldownSec: RESPAWN_COOLDOWN_SEC,
+              eliminatedBy: killerInfo,
+              isAds: false,
+              isSliding: false,
+              isCrouching: false,
+              ridingScooterId: null,
+              scooters: nextScooters,
+              localDeaths: s.localDeaths + 1,
+              bravoScore: s.playerTeam === 'alpha' ? s.bravoScore + 1 : s.bravoScore,
+              alphaScore: s.playerTeam === 'bravo' ? s.alphaScore + 1 : s.alphaScore,
+              damageFlashAlpha: 0.75,
+              damageVignetteAlpha: 0.9,
+            }));
+          }
         } else {
           set({
             hp: nextHp,
             damageFlashAlpha: Math.min(0.65, state.damageFlashAlpha + 0.35),
+            damageVignetteAlpha: Math.min(0.85, state.damageVignetteAlpha + 0.4),
           });
         }
       },
@@ -1267,13 +1388,105 @@ export const useGameStore = create<GameStoreState>()(
           ammo: stats.maxAmmo,
           isReloading: false,
           isEliminated: false,
+          isDowned: false,
+          downedHp: DOWNED_MAX_HP,
           eliminatedBy: null,
           isSliding: false,
           isCrouching: false,
           stunnedUntil: 0,
           damageFlashAlpha: 0,
+          damageVignetteAlpha: 0,
+          respawnCooldownSec: 0,
+          droneIntroTimer: 1.8,
           activeSpawnPoint: safestSpawn,
           respawnNonce: s.respawnNonce + 1,
+        }));
+      },
+
+      startReviveTeammate: (targetId) => {
+        set({ localRevivingTargetId: targetId, reviveProgress: 0 });
+      },
+
+      stepReviveProgress: (dt) => {
+        const state = get();
+        if (!state.localRevivingTargetId) return { completed: false, progress: 0 };
+        const nextProgress = Math.min(1.0, state.reviveProgress + dt / REVIVE_DURATION_SEC);
+        if (nextProgress >= 1.0) {
+          get().completeReviveTeammate();
+          return { completed: true, progress: 1.0 };
+        }
+        set({ reviveProgress: nextProgress });
+        return { completed: false, progress: nextProgress };
+      },
+
+      completeReviveTeammate: () => {
+        const state = get();
+        const targetId = state.localRevivingTargetId;
+        if (!targetId) return;
+        const target = state.remotePlayers[targetId];
+        if (target) {
+          set((s) => ({
+            localRevivingTargetId: null,
+            reviveProgress: 0,
+            remotePlayers: {
+              ...s.remotePlayers,
+              [targetId]: {
+                ...target,
+                hp: REVIVED_HP,
+                isDowned: false,
+                downedHp: DOWNED_MAX_HP,
+              },
+            },
+          }));
+        } else {
+          set({ localRevivingTargetId: null, reviveProgress: 0 });
+        }
+      },
+
+      completeReviveByTeammate: () => {
+        set({
+          hp: REVIVED_HP,
+          isDowned: false,
+          downedHp: DOWNED_MAX_HP,
+          isBeingRevived: false,
+          revivingTeammateName: null,
+          damageVignetteAlpha: 0.3,
+        });
+      },
+
+      cancelReviveTeammate: () => {
+        set({ localRevivingTargetId: null, reviveProgress: 0 });
+      },
+
+      setBeingRevived: (beingRevived, reviverId) => {
+        const state = get();
+        const reviver = reviverId ? state.remotePlayers[reviverId] : null;
+        set({
+          isBeingRevived: beingRevived,
+          revivingTeammateName: reviver ? reviver.name : 'Teammate',
+        });
+      },
+
+      setRemotePlayerRevived: (targetId) => {
+        const state = get();
+        const target = state.remotePlayers[targetId];
+        if (!target) return;
+        set((s) => ({
+          remotePlayers: {
+            ...s.remotePlayers,
+            [targetId]: {
+              ...target,
+              hp: REVIVED_HP,
+              isDowned: false,
+              downedHp: DOWNED_MAX_HP,
+            },
+          },
+        }));
+      },
+
+      triggerDamageVignette: (amount = 0.5) => {
+        set((s) => ({
+          damageVignetteAlpha: Math.min(1.0, s.damageVignetteAlpha + amount),
         }));
       },
 
@@ -1295,10 +1508,41 @@ export const useGameStore = create<GameStoreState>()(
           const nextMatchTime = isTimerEnded ? 300 : state.matchTimeRemaining - dt;
           const nextScreen: ScreenState = shouldGameOver ? 'gameover' : state.screen;
 
-          // Passive slow health regeneration (1 HP per second up to maxHp while alive)
+          // Passive slow health regeneration (1 HP per second up to maxHp while alive and not downed)
           let nextHp = state.hp;
-          if (!state.isEliminated && state.hp > 0 && state.hp < state.maxHp) {
+          if (!state.isEliminated && !state.isDowned && state.hp > 0 && state.hp < state.maxHp) {
             nextHp = Math.min(state.maxHp, state.hp + dt * 1.0);
+          }
+
+          // Drone camera drop intro timer
+          const nextDroneTimer = Math.max(0, state.droneIntroTimer - dt);
+
+          // Damage vignette alpha fade
+          const nextVignetteAlpha = Math.max(0, state.damageVignetteAlpha - dt * 0.9);
+
+          // Respawn cooldown countdown
+          let nextRespawnCooldown = state.respawnCooldownSec;
+          if (state.isEliminated && nextRespawnCooldown > 0) {
+            nextRespawnCooldown = Math.max(0, nextRespawnCooldown - dt);
+            if (nextRespawnCooldown === 0) {
+              setTimeout(() => {
+                get().respawnPlayer();
+              }, 0);
+            }
+          }
+
+          // Downed bleedout (bleed out 2.0 HP/s, slower if being revived)
+          let nextDownedHp = state.downedHp;
+          let nextIsDowned = state.isDowned;
+          let nextIsEliminated = state.isEliminated;
+          if (state.isDowned && !state.isEliminated) {
+            const bleedRate = state.isBeingRevived ? 0.5 : 2.0;
+            nextDownedHp = Math.max(0, state.downedHp - dt * bleedRate);
+            if (nextDownedHp <= 0) {
+              nextIsDowned = false;
+              nextIsEliminated = true;
+              nextRespawnCooldown = RESPAWN_COOLDOWN_SEC;
+            }
           }
 
           // 1. E-Scooter 20s Battery Countdown & Rarer Respawn (max MAX_ACTIVE_SCOOTERS = 2)
@@ -1446,6 +1690,12 @@ export const useGameStore = create<GameStoreState>()(
             mapPickups: nextPickups,
             pickupSpawnTimerSec: nextPickupTimer,
             damageIndicators: nextDamageIndicators,
+            droneIntroTimer: nextDroneTimer,
+            damageVignetteAlpha: nextVignetteAlpha,
+            respawnCooldownSec: nextRespawnCooldown,
+            isDowned: nextIsDowned,
+            downedHp: nextDownedHp,
+            isEliminated: nextIsEliminated,
           };
         }),
 
@@ -1521,6 +1771,8 @@ export const useGameStore = create<GameStoreState>()(
                   sliding,
                   ads,
                   ridingScooter,
+                  isDowned: Boolean(meta?.isDowned),
+                  downedHp: typeof meta?.downedHp === 'number' ? meta.downedHp : 100,
                   lastUpdatePerfMs: now,
                   snapshotBuffer: [snap],
                 },
@@ -1537,6 +1789,9 @@ export const useGameStore = create<GameStoreState>()(
           const nextKills = typeof meta?.kills === 'number' ? meta.kills : existing.kills;
           const nextDeaths = typeof meta?.deaths === 'number' ? meta.deaths : existing.deaths;
           const nextScore = typeof meta?.score === 'number' ? meta.score : existing.score;
+          const nextIsDowned = Boolean(meta?.isDowned);
+          const nextDownedHp =
+            typeof meta?.downedHp === 'number' ? meta.downedHp : existing.downedHp ?? 100;
 
           // Mutate high-frequency 60Hz transform fields in-place so useFrame reads them immediately
           // without forcing React to re-render the entire 3D scene tree 60 times a second!
@@ -1548,6 +1803,8 @@ export const useGameStore = create<GameStoreState>()(
           existing.ads = ads;
           existing.weaponClass = nextWeaponClass;
           existing.ridingScooter = ridingScooter;
+          existing.isDowned = nextIsDowned;
+          existing.downedHp = nextDownedHp;
           existing.lastUpdatePerfMs = now;
           if (!existing.snapshotBuffer) {
             existing.snapshotBuffer = [snap];
@@ -1564,6 +1821,8 @@ export const useGameStore = create<GameStoreState>()(
             existing.team !== nextTeam ||
             existing.weaponClass !== nextWeaponClass ||
             existing.ready !== nextReady ||
+            existing.isDowned !== nextIsDowned ||
+            Math.round(existing.downedHp ?? 100) !== Math.round(nextDownedHp) ||
             Math.round(existing.hp) !== Math.round(nextHp) ||
             existing.maxHp !== nextMaxHp ||
             existing.kills !== nextKills ||
@@ -1583,6 +1842,8 @@ export const useGameStore = create<GameStoreState>()(
           existing.kills = nextKills;
           existing.deaths = nextDeaths;
           existing.score = nextScore;
+          existing.isDowned = nextIsDowned;
+          existing.downedHp = nextDownedHp;
 
           return {
             remotePlayers: {

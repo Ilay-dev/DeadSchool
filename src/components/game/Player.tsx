@@ -140,7 +140,7 @@ export function PlayerController({
   // Teleport player to safest unoccupied SpawnPoint on match start, map change, or respawn
   useEffect(() => {
     const state = useGameStore.getState();
-    const spawn = state.activeSpawnPoint || state.getSafestSpawnForTeam(playerTeam);
+    const spawn = state.getSafestSpawnForTeam(playerTeam);
     const sx = spawn.position[0];
     const sy = spawn.position[1];
     const sz = spawn.position[2];
@@ -163,8 +163,8 @@ export function PlayerController({
       });
     }
 
-    camera.position.set(sx, sy + PLAYER_DIMENSIONS.standingEyeHeight, sz);
-    _euler.set(0, spawn.rotationY, 0, 'YXZ');
+    camera.position.set(sx, sy + 45, sz + 12);
+    _euler.set(-0.95, spawn.rotationY, 0, 'YXZ');
     camera.quaternion.setFromEuler(_euler);
   }, [selectedMapId, playerTeam, respawnNonce, camera]);
 
@@ -185,6 +185,8 @@ export function PlayerController({
       state.screen !== 'playing' ||
       state.chatInputOpen ||
       state.isEliminated ||
+      state.isDowned ||
+      state.droneIntroTimer > 0 ||
       Date.now() < state.stunnedUntil
     ) {
       return;
@@ -378,10 +380,12 @@ export function PlayerController({
       const keyUpper = e.key === ' ' ? 'SPACE' : e.key.toUpperCase();
       keysHeldRef.current.add(keyUpper);
 
-      // Press Space to Respawn when Eliminated (Screenshot 3)
+      // Press Space to Respawn when Eliminated (Screenshot 3 - respects 5s cooldown)
       if (store.isEliminated && keyUpper === 'SPACE') {
-        e.preventDefault();
-        store.respawnPlayer();
+        if (store.respawnCooldownSec <= 0) {
+          e.preventDefault();
+          store.respawnPlayer();
+        }
         return;
       }
 
@@ -639,12 +643,57 @@ export function PlayerController({
         ? PLAYER_DIMENSIONS.kongStrongSpeedMultiplier
         : 1.0;
 
-    // Determine horizontal velocity: Riding E-Scooter (13.8 m/s) vs Sliding (11.4 m/s) vs Walking (7.5 m/s, NO SPRINT)
+    // Check revive interaction with nearby downed teammates
+    if (!store.isEliminated && !store.isDowned) {
+      let nearbyDownedTeammateId: string | null = null;
+      for (const p of Object.values(store.remotePlayers)) {
+        if (p.team === store.playerTeam && p.isDowned) {
+          const d = Math.hypot(
+            footPosRef.current[0] - p.position[0],
+            footPosRef.current[2] - p.position[2]
+          );
+          if (d <= 2.8) {
+            nearbyDownedTeammateId = p.id;
+            break;
+          }
+        }
+      }
+
+      const isReviveKeyHeld = held.has(kb.interact) || held.has('E') || held.has('F');
+      if (nearbyDownedTeammateId && isReviveKeyHeld && !store.ridingScooterId) {
+        if (store.localRevivingTargetId !== nearbyDownedTeammateId) {
+          store.startReviveTeammate(nearbyDownedTeammateId);
+          multiplayerManager.sendReviveEvent(nearbyDownedTeammateId, 'start');
+        }
+        const res = store.stepReviveProgress(dt);
+        multiplayerManager.sendReviveEvent(nearbyDownedTeammateId, 'progress', res.progress);
+        if (res.completed) {
+          multiplayerManager.sendReviveEvent(nearbyDownedTeammateId, 'complete');
+          soundEngine.playPickupSound('kong_strong');
+        }
+      } else if (store.localRevivingTargetId) {
+        const cancelTarget = store.localRevivingTargetId;
+        store.cancelReviveTeammate();
+        multiplayerManager.sendReviveEvent(cancelTarget, 'cancel');
+      }
+    }
+
+    // Determine horizontal velocity: Drone Intro vs Downed (Crawling) vs Riding E-Scooter vs Sliding vs Walking
     let desiredDx = 0;
     let desiredDz = 0;
     let currentSpeed: number = PLAYER_DIMENSIONS.walkSpeed * kongSpeedBoost;
+    const isDroneIntro = store.droneIntroTimer > 0;
 
-    if (store.ridingScooterId) {
+    if (isDroneIntro) {
+      currentSpeed = 0;
+      desiredDx = 0;
+      desiredDz = 0;
+    } else if (store.isDowned) {
+      // Fortnite-Style DBNO Crawling
+      currentSpeed = 1.35;
+      desiredDx = _moveVec.x * currentSpeed * dt;
+      desiredDz = _moveVec.z * currentSpeed * dt;
+    } else if (store.ridingScooterId) {
       currentSpeed = PLAYER_DIMENSIONS.scooterSpeed;
       desiredDx = _moveVec.x * currentSpeed * dt;
       desiredDz = _moveVec.z * currentSpeed * dt;
@@ -665,8 +714,8 @@ export function PlayerController({
       desiredDz = _moveVec.z * currentSpeed * dt;
     }
 
-    // Jump impulse (jumping also cancels slide)
-    if (held.has(kb.jump) && isGroundedRef.current) {
+    // Jump impulse (jumping also cancels slide, disabled when downed or during drone intro)
+    if (held.has(kb.jump) && isGroundedRef.current && !store.isDowned && !isDroneIntro) {
       velocityYRef.current = PLAYER_DIMENSIONS.jumpVelocity;
       isGroundedRef.current = false;
       if (store.isSliding) {
@@ -906,14 +955,16 @@ export function PlayerController({
     ];
     footPosRef.current = [nextFootX, nextFootY, nextFootZ];
 
-    // Smooth camera eye height transition: Standing 1.65m (+0.14m on E-Scooter deck) vs Crouched 0.80m vs Sliding 1.02m (prevents floor clipping)
-    const targetEyeOffset = store.isSliding
-      ? 1.02
-      : isLowCollider
-        ? PLAYER_DIMENSIONS.crouchingEyeHeight
-        : store.ridingScooterId
-          ? PLAYER_DIMENSIONS.standingEyeHeight + 0.14
-          : PLAYER_DIMENSIONS.standingEyeHeight;
+    // Smooth camera eye height transition: Downed 0.42m (crawling) vs Standing 1.65m (+0.14m on E-Scooter) vs Crouched 0.80m vs Sliding 1.02m
+    const targetEyeOffset = store.isDowned
+      ? 0.42
+      : store.isSliding
+        ? 1.02
+        : isLowCollider
+          ? PLAYER_DIMENSIONS.crouchingEyeHeight
+          : store.ridingScooterId
+            ? PLAYER_DIMENSIONS.standingEyeHeight + 0.14
+            : PLAYER_DIMENSIONS.standingEyeHeight;
     currentEyeOffsetRef.current = THREE.MathUtils.damp(
       currentEyeOffsetRef.current,
       targetEyeOffset,
@@ -930,18 +981,30 @@ export function PlayerController({
     if (damageShakeRef.current > 0.001) {
       const shake = damageShakeRef.current;
       const shakeFreq = performance.now() * 0.05;
-      shakePitch = Math.sin(shakeFreq) * 0.016 * shake;
-      shakeYaw = Math.cos(shakeFreq * 1.3) * 0.014 * shake;
-      shakeRoll = Math.sin(shakeFreq * 0.7) * 0.012 * shake;
-      shakeY = (Math.sin(shakeFreq * 1.8) - 0.5) * 0.022 * shake;
+      shakePitch = Math.sin(shakeFreq) * 0.024 * shake;
+      shakeYaw = Math.cos(shakeFreq * 1.3) * 0.02 * shake;
+      shakeRoll = Math.sin(shakeFreq * 0.7) * 0.016 * shake;
+      shakeY = (Math.sin(shakeFreq * 1.8) - 0.5) * 0.03 * shake;
 
-      damageShakeRef.current = THREE.MathUtils.damp(damageShakeRef.current, 0, 16, dt);
+      damageShakeRef.current = THREE.MathUtils.damp(damageShakeRef.current, 0, 14, dt);
+    }
+
+    // Drone satellite camera swooping smoothly down into player position on deploy
+    let droneAlt = 0;
+    let droneZOffset = 0;
+    let dronePitch = 0;
+    if (store.droneIntroTimer > 0) {
+      const p = 1.0 - Math.max(0, store.droneIntroTimer / 1.8);
+      const ease = 1.0 - Math.pow(1.0 - p, 3);
+      droneAlt = (1.0 - ease) * 45;
+      droneZOffset = (1.0 - ease) * 16;
+      dronePitch = -(1.0 - ease) * 0.95;
     }
 
     camera.position.set(
       nextFootX,
-      nextFootY + currentEyeOffsetRef.current + shakeY,
-      nextFootZ
+      nextFootY + currentEyeOffsetRef.current + shakeY + droneAlt,
+      nextFootZ + droneZOffset
     );
 
     _euler.setFromQuaternion(camera.quaternion, 'YXZ');
@@ -949,8 +1012,11 @@ export function PlayerController({
       _euler.x += shakePitch;
       _euler.y += shakeYaw;
       _euler.z += shakeRoll;
-      camera.quaternion.setFromEuler(_euler);
     }
+    if (store.droneIntroTimer > 0) {
+      _euler.x += dronePitch;
+    }
+    camera.quaternion.setFromEuler(_euler);
 
     const speedRatio = store.isSliding
       ? 1.2

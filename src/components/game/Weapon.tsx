@@ -276,11 +276,38 @@ export function WeaponModelGeometry({
           <meshStandardMaterial color={skin.accent} roughness={skin.roughness} metalness={skin.metalness} />
         </mesh>
 
-        {/* 5. Extended 40-round Stick Magazine in matte black */}
-        <mesh position={[0, -0.185, -0.135]} rotation={[0.16, 0, 0]}>
-          <boxGeometry args={[0.034, 0.22, 0.046]} />
-          <meshStandardMaterial color="#181a1f" roughness={0.5} metalness={0.6} />
-        </mesh>
+        {/* 5. Authentic Extended 40-round Stick Magazine with Bumper Baseplate & Witness Windows */}
+        <group position={[0, -0.185, -0.135]} rotation={[0.16, 0, 0]}>
+          {/* Main Stick Body */}
+          <mesh>
+            <boxGeometry args={[0.034, 0.23, 0.048]} />
+            <meshStandardMaterial color="#1a1c22" roughness={0.45} metalness={0.65} />
+          </mesh>
+          {/* Witness Round Indicator Window along rear edge */}
+          <mesh position={[0, -0.01, 0.024]}>
+            <boxGeometry args={[0.012, 0.16, 0.003]} />
+            <meshStandardMaterial color="#0f1115" roughness={0.8} />
+          </mesh>
+          {/* Brass cartridge indicators inside window */}
+          {[-0.06, -0.02, 0.02, 0.06].map((wz) => (
+            <mesh key={wz} position={[0, wz, 0.025]} rotation={[0, 0, Math.PI / 2]}>
+              <cylinderGeometry args={[0.003, 0.003, 0.006, 8]} />
+              <meshStandardMaterial color="#f59e0b" roughness={0.2} metalness={0.9} />
+            </mesh>
+          ))}
+          {/* Flared Heavy Polymer Bumper Baseplate */}
+          <mesh position={[0, -0.118, 0.003]}>
+            <boxGeometry args={[0.042, 0.022, 0.058]} />
+            <meshStandardMaterial color="#0f1013" roughness={0.7} metalness={0.3} />
+          </mesh>
+          {/* Baseplate grip ridges */}
+          {[-0.012, 0.012].map((bx) => (
+            <mesh key={bx} position={[bx, -0.126, 0.003]}>
+              <boxGeometry args={[0.004, 0.006, 0.048]} />
+              <meshStandardMaterial color="#0b0c0e" roughness={0.8} />
+            </mesh>
+          ))}
+        </group>
 
         {/* 6. Barrel Shroud & Compensator */}
         <mesh position={[0, 0.025, -0.26]} rotation={[Math.PI / 2, 0, 0]}>
@@ -504,11 +531,31 @@ export function WeaponModelGeometry({
           <meshStandardMaterial color="#131417" roughness={0.35} metalness={0.85} />
         </mesh>
 
-        {/* 8. 5-Round AWP Box Magazine in lower belly */}
-        <mesh position={[0, -0.082, -0.06]}>
-          <boxGeometry args={[0.044, 0.085, 0.095]} />
-          <meshStandardMaterial color="#15171a" roughness={0.45} metalness={0.7} />
-        </mesh>
+        {/* 8. Authentic Accuracy International 5-Round Steel Box Magazine */}
+        <group position={[0, -0.082, -0.06]}>
+          {/* Stamped Steel Box Body */}
+          <mesh>
+            <boxGeometry args={[0.044, 0.095, 0.105]} />
+            <meshStandardMaterial color="#181a1f" roughness={0.35} metalness={0.82} />
+          </mesh>
+          {/* Side Strengthening Grooves / Ribs */}
+          {[-0.023, 0.023].map((sx) => (
+            <mesh key={sx} position={[sx, 0, 0]}>
+              <boxGeometry args={[0.002, 0.065, 0.075]} />
+              <meshStandardMaterial color="#101114" roughness={0.4} metalness={0.9} />
+            </mesh>
+          ))}
+          {/* Steel Floorplate with Finger Catch */}
+          <mesh position={[0, -0.048, 0]}>
+            <boxGeometry args={[0.048, 0.012, 0.112]} />
+            <meshStandardMaterial color="#121316" roughness={0.3} metalness={0.88} />
+          </mesh>
+          {/* Front Magazine Catch Lug */}
+          <mesh position={[0, 0.02, -0.054]}>
+            <boxGeometry args={[0.016, 0.024, 0.008]} />
+            <meshStandardMaterial color="#22252c" roughness={0.3} metalness={0.9} />
+          </mesh>
+        </group>
 
         {/* 9. Tactical Forearms and Gloves */}
         <TacticalForearmAndGlove
@@ -542,6 +589,48 @@ export function WeaponModelGeometry({
           <sphereGeometry args={[0.0048, 8, 8]} />
           <meshStandardMaterial color="#facc15" emissive="#eab308" emissiveIntensity={0.4} roughness={0.2} metalness={0.9} />
         </mesh>
+        {/* Full-Length High-Capacity Under-Barrel Tubular Magazine */}
+        <group position={[0, 0.005, -0.28]}>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.014, 0.014, 0.48, 14]} />
+            <meshStandardMaterial color="#1a1c22" roughness={0.3} metalness={0.85} />
+          </mesh>
+          {/* Knurled Front Magazine End Cap */}
+          <mesh position={[0, 0, -0.245]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.015, 0.015, 0.02, 14]} />
+            <meshStandardMaterial color="#121316" roughness={0.5} metalness={0.88} />
+          </mesh>
+          {/* Dual Heavy Barrel-to-Magazine Clamp */}
+          <mesh position={[0, 0.012, -0.20]}>
+            <boxGeometry args={[0.046, 0.038, 0.022]} />
+            <meshStandardMaterial color="#121316" roughness={0.3} metalness={0.9} />
+          </mesh>
+        </group>
+
+        {/* Tactical Receiver Side-Saddle Shell Carrier with 4 Red 12-Gauge Shells */}
+        <group position={[-0.038, 0.014, -0.01]}>
+          {/* Side-Saddle Polymer Mounting Plate */}
+          <mesh>
+            <boxGeometry args={[0.008, 0.046, 0.12]} />
+            <meshStandardMaterial color="#111317" roughness={0.6} metalness={0.4} />
+          </mesh>
+          {/* 4 Red 12-Gauge Shotgun Shells */}
+          {[-0.042, -0.014, 0.014, 0.042].map((sz) => (
+            <group key={sz} position={[-0.008, 0, sz]}>
+              {/* Red Plastic Hull */}
+              <mesh rotation={[0, 0, Math.PI / 2]}>
+                <cylinderGeometry args={[0.01, 0.01, 0.022, 12]} />
+                <meshStandardMaterial color="#dc2626" roughness={0.4} metalness={0.2} />
+              </mesh>
+              {/* Polished Brass Rim / Base */}
+              <mesh position={[-0.012, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
+                <cylinderGeometry args={[0.0105, 0.0105, 0.008, 12]} />
+                <meshStandardMaterial color="#f59e0b" roughness={0.15} metalness={0.92} />
+              </mesh>
+            </group>
+          ))}
+        </group>
+
         {/* Checkered Walnut wood forend */}
         <mesh position={[0, 0.002, -0.18]}>
           <boxGeometry args={[0.068, 0.05, 0.24]} />
@@ -594,29 +683,107 @@ export function WeaponModelGeometry({
           <cylinderGeometry args={[0.017, 0.017, 0.26, 14]} />
           <meshStandardMaterial color={stats.secondaryColor} roughness={0.22} metalness={0.88} />
         </mesh>
-        {/* Medium ACOG 4x Optic — open ring in ADS so camera never clips inside opaque cylinder */}
+        {/* Modern Tactical Cantilever LPVO Marksman Scope (Low-Power Variable Optic) */}
         {isAds ? (
-          <group position={[0, 0.098, -0.06]}>
+          <group position={[0, 0.088, -0.06]}>
+            {/* Thin outer optic ring */}
             <mesh>
-              <torusGeometry args={[0.028, 0.004, 12, 24]} />
-              <meshStandardMaterial color="#181a1e" roughness={0.24} metalness={0.82} />
+              <torusGeometry args={[0.032, 0.003, 14, 28]} />
+              <meshStandardMaterial color="#0f1114" roughness={0.2} metalness={0.9} />
             </mesh>
-            <mesh>
-              <sphereGeometry args={[0.0028, 8, 8]} />
+            {/* Multi-coated optical glass */}
+            <mesh position={[0, 0, 0.001]}>
+              <circleGeometry args={[0.031, 28]} />
+              <meshPhysicalMaterial
+                color="#e0f2fe"
+                transparent
+                opacity={0.08}
+                roughness={0.02}
+                metalness={0.05}
+                transmission={0.92}
+                ior={1.5}
+              />
+            </mesh>
+            {/* Tactical Illuminated Mil-Dot Reticle */}
+            <mesh position={[0, 0, 0.002]}>
+              <boxGeometry args={[0.06, 0.0008, 0.001]} />
+              <meshBasicMaterial color="#ff2222" transparent opacity={0.75} />
+            </mesh>
+            <mesh position={[0, 0, 0.002]}>
+              <boxGeometry args={[0.0008, 0.06, 0.001]} />
+              <meshBasicMaterial color="#ff2222" transparent opacity={0.75} />
+            </mesh>
+            {/* Stadia hashmarks */}
+            {[-0.015, -0.008, 0.008, 0.015].map((hx) => (
+              <mesh key={`hx_${hx}`} position={[hx, 0, 0.002]}>
+                <boxGeometry args={[0.0006, 0.004, 0.001]} />
+                <meshBasicMaterial color="#ff2222" transparent opacity={0.8} />
+              </mesh>
+            ))}
+            {[-0.015, -0.008, 0.008, 0.015].map((hy) => (
+              <mesh key={`hy_${hy}`} position={[0, hy, 0.002]}>
+                <boxGeometry args={[0.004, 0.0006, 0.001]} />
+                <meshBasicMaterial color="#ff2222" transparent opacity={0.8} />
+              </mesh>
+            ))}
+            {/* Center illuminated dot */}
+            <mesh position={[0, 0, 0.003]}>
+              <sphereGeometry args={[0.002, 8, 8]} />
               <meshBasicMaterial color={sightHex} />
             </mesh>
           </group>
         ) : (
-          <>
-            <mesh position={[0, 0.088, -0.06]} rotation={[Math.PI / 2, 0, 0]}>
-              <cylinderGeometry args={[0.024, 0.02, 0.16, 16]} />
-              <meshStandardMaterial color="#181a1e" roughness={0.24} metalness={0.82} />
+          <group position={[0, 0.088, -0.06]}>
+            {/* CNC Cantilever Scope Mount Base clamped to rail */}
+            <mesh position={[0, -0.026, -0.02]}>
+              <boxGeometry args={[0.038, 0.022, 0.18]} />
+              <meshStandardMaterial color="#14171d" roughness={0.3} metalness={0.85} />
             </mesh>
-            <mesh position={[0, 0.114, -0.07]}>
-              <boxGeometry args={[0.008, 0.008, 0.08]} />
-              <meshBasicMaterial color={sightHex} />
+            {/* Dual Cantilever Rings */}
+            <mesh position={[0, 0, -0.08]}>
+              <torusGeometry args={[0.022, 0.0045, 10, 20]} />
+              <meshStandardMaterial color="#101216" roughness={0.25} metalness={0.9} />
             </mesh>
-          </>
+            <mesh position={[0, 0, 0.04]}>
+              <torusGeometry args={[0.022, 0.0045, 10, 20]} />
+              <meshStandardMaterial color="#101216" roughness={0.25} metalness={0.9} />
+            </mesh>
+            {/* 34mm Main Tube */}
+            <mesh rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.018, 0.018, 0.22, 18]} />
+              <meshStandardMaterial color="#17191f" roughness={0.25} metalness={0.88} />
+            </mesh>
+            {/* Flared Objective Bell (front) */}
+            <mesh position={[0, 0, -0.12]} rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.025, 0.019, 0.06, 18]} />
+              <meshStandardMaterial color="#121316" roughness={0.28} metalness={0.88} />
+            </mesh>
+            {/* Multi-Coated Objective Lens */}
+            <mesh position={[0, 0, -0.151]}>
+              <circleGeometry args={[0.023, 16]} />
+              <meshStandardMaterial color="#0b1b2b" roughness={0.1} metalness={0.9} />
+            </mesh>
+            {/* Ocular Bell with Magnification Ring & Throw Lever (rear) */}
+            <mesh position={[0, 0, 0.11]} rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.024, 0.02, 0.06, 18]} />
+              <meshStandardMaterial color="#121316" roughness={0.3} metalness={0.85} />
+            </mesh>
+            {/* Rapid Zoom Throw Lever */}
+            <mesh position={[0.024, 0.012, 0.09]} rotation={[0, 0, -0.6]}>
+              <boxGeometry args={[0.005, 0.016, 0.01]} />
+              <meshStandardMaterial color="#2c3038" roughness={0.3} metalness={0.9} />
+            </mesh>
+            {/* Tactical Knurled Elevation Turret (Top) */}
+            <mesh position={[0, 0.022, -0.02]}>
+              <cylinderGeometry args={[0.01, 0.01, 0.014, 14]} />
+              <meshStandardMaterial color="#0e1013" roughness={0.4} metalness={0.85} />
+            </mesh>
+            {/* Tactical Knurled Windage Turret (Right) */}
+            <mesh position={[0.022, 0, -0.02]} rotation={[0, 0, Math.PI / 2]}>
+              <cylinderGeometry args={[0.01, 0.01, 0.014, 14]} />
+              <meshStandardMaterial color="#0e1013" roughness={0.4} metalness={0.85} />
+            </mesh>
+          </group>
         )}
         {/* Straight 20-rd 7.62mm marksman magazine */}
         <mesh position={[0, -0.088, -0.09]} rotation={[0.1, 0, 0]}>
@@ -824,16 +991,31 @@ export function WeaponModelGeometry({
         </mesh>
       </group>
 
-      {/* 7. Curved STANAG 30-round Magazine */}
-      <mesh position={[0, -0.098, -0.075]} rotation={[0.22, 0, 0]}>
-        <boxGeometry args={[0.044, 0.165, 0.072]} />
-        <meshStandardMaterial color={skin.accent} roughness={0.48} metalness={skin.metalness} />
-      </mesh>
-      {/* Magazine rib channels */}
-      <mesh position={[0, -0.098, -0.075]} rotation={[0.22, 0, 0]}>
-        <boxGeometry args={[0.046, 0.12, 0.048]} />
-        <meshStandardMaterial color="#16181d" roughness={0.55} metalness={0.6} />
-      </mesh>
+      {/* 7. Curved 30-Round Magpul PMAG with Textured Grip Ribs & Flared Baseplate */}
+      <group position={[0, -0.098, -0.075]} rotation={[0.22, 0, 0]}>
+        {/* Upper Mag Body */}
+        <mesh position={[0, 0.04, 0]}>
+          <boxGeometry args={[0.042, 0.08, 0.072]} />
+          <meshStandardMaterial color={skin.accent} roughness={0.45} metalness={skin.metalness} />
+        </mesh>
+        {/* Curved Lower Banana Mag Body */}
+        <mesh position={[0, -0.035, -0.012]} rotation={[0.12, 0, 0]}>
+          <boxGeometry args={[0.042, 0.11, 0.068]} />
+          <meshStandardMaterial color={skin.accent} roughness={0.45} metalness={skin.metalness} />
+        </mesh>
+        {/* Textured Horizontal Polymer Grip Ribs */}
+        {[-0.06, -0.03, 0.0, 0.03].map((my) => (
+          <mesh key={my} position={[0, my, -0.012]} rotation={[0.12, 0, 0]}>
+            <boxGeometry args={[0.046, 0.012, 0.072]} />
+            <meshStandardMaterial color="#111317" roughness={0.65} metalness={0.4} />
+          </mesh>
+        ))}
+        {/* Flared Rubberized Ranger Floorplate / Baseplate */}
+        <mesh position={[0, -0.095, -0.024]} rotation={[0.12, 0, 0]}>
+          <boxGeometry args={[0.048, 0.018, 0.078]} />
+          <meshStandardMaterial color="#0c0d10" roughness={0.8} metalness={0.2} />
+        </mesh>
+      </group>
 
       {/* 8. Collapsible M4 Buttstock (hidden in ADS so it never clips camera) */}
       {!isAds && (

@@ -25,6 +25,10 @@ import {
   hermiteInterpolatePosition,
   computeLissajousWeaponBob,
   hexToRgba,
+  DOWNED_MAX_HP,
+  REVIVE_DURATION_SEC,
+  REVIVED_HP,
+  RESPAWN_COOLDOWN_SEC,
   type AABB,
   type SpawnPoint,
 } from './rules';
@@ -196,4 +200,23 @@ test('Vape naming and constants are valid', () => {
   assert.equal(MAX_MAP_VAPES, 5);
   assert.equal(VAPE_SMOKE_RADIUS, 10.5);
 });
+
+test('DBNO and Revive rules and constants are correctly defined', () => {
+  assert.equal(DOWNED_MAX_HP, 100);
+  assert.equal(REVIVE_DURATION_SEC, 5.0);
+  assert.equal(REVIVED_HP, 20);
+  assert.equal(RESPAWN_COOLDOWN_SEC, 5.0);
+});
+
+test('selectSafestSpawnPoint maximally distributes spawns based on active player positions', () => {
+  const spawns: SpawnPoint[] = [
+    { name: 'West_Spawn', position: [-40, 0, 0], rotationY: 0, team: 'alpha' },
+    { name: 'Center_Spawn', position: [0, 0, 0], rotationY: 0, team: 'alpha' },
+    { name: 'East_Spawn', position: [40, 0, 0], rotationY: 0, team: 'alpha' },
+  ];
+  // With enemy at West_Spawn (-40, 0, 0), safest spawn should be East_Spawn (+40, 0, 0)
+  const chosen = selectSafestSpawnPoint(spawns, [[-40, 0, 0]]);
+  assert.equal(chosen.name, 'East_Spawn');
+});
+
 

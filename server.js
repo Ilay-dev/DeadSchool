@@ -218,6 +218,8 @@ async function startServer() {
           }
           p.crouching = Boolean(msg.crouching);
           p.sliding = Boolean(msg.sliding);
+          p.isDowned = Boolean(msg.isDowned);
+          p.downedHp = typeof msg.downedHp === "number" ? msg.downedHp : p.downedHp;
           p.ads = Boolean(msg.ads);
           p.ridingScooter = Boolean(msg.ridingScooter);
           p.weaponClass = msg.weaponClass || p.weaponClass;
@@ -236,6 +238,8 @@ async function startServer() {
               rotation: p.rotation,
               crouching: p.crouching,
               sliding: p.sliding,
+              isDowned: p.isDowned,
+              downedHp: p.downedHp,
               ads: p.ads,
               ridingScooter: p.ridingScooter,
               weaponClass: p.weaponClass,
@@ -308,7 +312,7 @@ async function startServer() {
             room,
             lanIp: getLocalLanIp()
           });
-        } else if (type === "combat:hit") {
+        } else if (type === "combat:hit" || type === "combat:event") {
           const info = clientRoomMap.get(ws);
           if (!info) return;
           const room = rooms.get(info.roomCode);
@@ -333,6 +337,7 @@ async function startServer() {
           }
           broadcastToRoom(wss, info.roomCode, {
             type: "combat:event",
+            msgId: msg.msgId || `srv_combat_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
             roomCode: info.roomCode,
             attackerId: info.playerId,
             attackerName: attacker?.name || msg.attackerName || "Player",
@@ -347,6 +352,20 @@ async function startServer() {
             bravoScore: room.bravoScore,
             weaponClass: msg.weaponClass || attacker?.weaponClass || "Assault Rifle",
             weaponId: msg.weaponId || attacker?.weaponClass || "assault"
+          });
+        } else if (type === "combat:revive") {
+          const info = clientRoomMap.get(ws);
+          if (!info) return;
+          broadcastToRoom(wss, info.roomCode, {
+            type: "combat:revive",
+            msgId: msg.msgId || `srv_revive_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            roomCode: info.roomCode,
+            reviverId: info.playerId,
+            targetId: msg.targetId,
+            status: msg.status || "complete",
+            progress: msg.progress,
+            revivedHp: 20,
+            timestamp: Date.now()
           });
         } else if (type === "chat:message") {
           const info = clientRoomMap.get(ws);

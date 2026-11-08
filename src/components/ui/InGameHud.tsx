@@ -265,11 +265,15 @@ function EliminatedSpectatingOverlay() {
   const respawnPlayer = useGameStore((s) => s.respawnPlayer);
   const setScreen = useGameStore((s) => s.setScreen);
   const openSettingsFromPause = useGameStore((s) => s.openSettingsFromPause);
+  const respawnCooldownSec = useGameStore((s) => s.respawnCooldownSec);
 
   const killerName = eliminatedBy?.name || 'mousepad killer';
   const killerHp = eliminatedBy?.hp ?? 100;
   const killerMaxHp = eliminatedBy?.maxHp ?? 100;
   const weaponStats = WEAPON_CLASSES[selectedClass];
+
+  const cooldownActive = respawnCooldownSec > 0;
+  const cooldownDisplay = Math.ceil(respawnCooldownSec);
 
   return (
     <div
@@ -314,14 +318,23 @@ function EliminatedSpectatingOverlay() {
           <button
             type="button"
             data-testid="respawn-button"
-            onClick={respawnPlayer}
-            className="w-80 h-20 bg-gradient-to-b from-[#4da3ff] to-[#2b7fff] hover:from-[#60adff] hover:to-[#3b8aff] border border-white/30 text-white font-extrabold text-[40px] tracking-wide flex items-center justify-center shadow-2xl cursor-pointer"
+            disabled={cooldownActive}
+            onClick={() => {
+              if (!cooldownActive) respawnPlayer();
+            }}
+            className={`w-80 h-20 border border-white/30 text-white font-extrabold text-[36px] tracking-wide flex items-center justify-center shadow-2xl transition-all ${
+              cooldownActive
+                ? 'bg-gradient-to-b from-gray-700 to-gray-900 opacity-75 cursor-not-allowed text-white/50'
+                : 'bg-gradient-to-b from-[#4da3ff] to-[#2b7fff] hover:from-[#60adff] hover:to-[#3b8aff] cursor-pointer'
+            }`}
           >
-            RESPAWN
+            {cooldownActive ? `RESPAWN IN ${cooldownDisplay}s` : 'RESPAWN'}
           </button>
 
           <div className="text-[18px] font-extrabold text-white/65 mt-2.5 drop-shadow">
-            [ Press Space to Respawn ]
+            {cooldownActive
+              ? `[ Respawn in ${cooldownDisplay}s ]`
+              : '[ Press Space to Respawn ]'}
           </div>
         </div>
 
@@ -457,6 +470,15 @@ export function InGameHudOverlay() {
   const localScore = useGameStore((s) => s.localScore);
   const matchTimeRemaining = useGameStore((s) => s.matchTimeRemaining);
   const damageFlashAlpha = useGameStore((s) => s.damageFlashAlpha);
+  const damageVignetteAlpha = useGameStore((s) => s.damageVignetteAlpha);
+  const droneIntroTimer = useGameStore((s) => s.droneIntroTimer);
+  const isDowned = useGameStore((s) => s.isDowned);
+  const downedHp = useGameStore((s) => s.downedHp);
+  const maxDownedHp = useGameStore((s) => s.maxDownedHp);
+  const isBeingRevived = useGameStore((s) => s.isBeingRevived);
+  const revivingTeammateName = useGameStore((s) => s.revivingTeammateName);
+  const localRevivingTargetId = useGameStore((s) => s.localRevivingTargetId);
+  const reviveProgress = useGameStore((s) => s.reviveProgress);
   const keybinds = useGameStore((s) => s.settings.keybinds);
   const showFpsPing = useGameStore((s) => s.settings.showFpsPing);
   const killFeed = useGameStore((s) => s.killFeed);
@@ -493,6 +515,131 @@ export function InGameHudOverlay() {
 
   return (
     <div className="fixed inset-0 z-10 pointer-events-none select-none overflow-hidden">
+      {/* Fullscreen Radial Red Damage Vignette & Low HP Pulsing */}
+      {(damageVignetteAlpha > 0.01 || (hp < 30 && !isEliminated) || isDowned) && (
+        <div
+          data-testid="hud-damage-vignette"
+          className="fixed inset-0 pointer-events-none transition-opacity duration-150 z-20"
+          style={{
+            background:
+              'radial-gradient(ellipse at center, transparent 38%, rgba(220, 20, 20, 0.40) 75%, rgba(160, 0, 0, 0.90) 100%)',
+            opacity: Math.min(1, Math.max(damageVignetteAlpha, isDowned ? 0.82 : hp < 30 ? 0.45 : 0)),
+          }}
+        />
+      )}
+
+      {/* Drone Recon Orbital Drop Intro HUD Overlay */}
+      {droneIntroTimer > 0 && !isEliminated && (
+        <div
+          data-testid="hud-drone-intro-overlay"
+          className="fixed inset-0 z-35 pointer-events-none flex flex-col justify-between p-8"
+        >
+          {/* Top satellite status bar */}
+          <div className="flex justify-between items-start text-emerald-400 font-mono text-xs tracking-widest uppercase">
+            <div className="bg-black/80 px-4 py-2 border border-emerald-500/40 shadow-lg">
+              <div className="font-bold text-sm text-emerald-300">[DRONE RECON // ORBITAL DEPLOYMENT]</div>
+              <div className="text-white/70 mt-0.5">LAT 52.5200° N · LON 13.4050° E · ALT {Math.round(droneIntroTimer * 25)}m</div>
+            </div>
+            <div className="bg-black/80 px-4 py-2 border border-emerald-500/40 text-right animate-pulse text-emerald-400 font-bold shadow-lg">
+              ● LIVE SATELLITE FEED
+            </div>
+          </div>
+
+          {/* Center Tactical Targeting Bracket */}
+          <div className="fixed inset-0 flex items-center justify-center pointer-events-none">
+            <div className="w-64 h-64 border border-emerald-400/30 rounded-lg relative flex flex-col items-center justify-center shadow-[0_0_30px_rgba(16,185,129,0.15)]">
+              <div className="w-5 h-5 border-t-2 border-l-2 border-emerald-400 absolute top-0 left-0" />
+              <div className="w-5 h-5 border-t-2 border-r-2 border-emerald-400 absolute top-0 right-0" />
+              <div className="w-5 h-5 border-b-2 border-l-2 border-emerald-400 absolute bottom-0 left-0" />
+              <div className="w-5 h-5 border-b-2 border-r-2 border-emerald-400 absolute bottom-0 right-0" />
+              <div className="text-emerald-400 text-xs font-mono font-bold tracking-widest uppercase animate-pulse">
+                INFILTRATING CAMPUS...
+              </div>
+              <div className="text-[11px] font-mono text-emerald-300/80 mt-1">
+                LOCKING FIRST PERSON OPTICS
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom altitude / telemetry bar */}
+          <div className="flex justify-between items-end text-emerald-400 font-mono text-xs">
+            <div className="bg-black/80 px-4 py-2 border border-emerald-500/40 shadow-lg">
+              STATUS: APPROACHING CAMPUS
+            </div>
+            <div className="bg-black/80 px-4 py-2 border border-emerald-500/40 font-mono-num font-bold shadow-lg">
+              T-{(droneIntroTimer).toFixed(1)}s
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Downed (DBNO) Crawling Alert Banner & Bleedout Bar */}
+      {isDowned && !isEliminated && (
+        <div
+          data-testid="hud-downed-banner"
+          className="fixed left-1/2 top-[34%] -translate-x-1/2 bg-black/90 border-2 border-red-500 px-6 py-4 text-center shadow-2xl max-w-md w-full z-30"
+        >
+          <div className="flex items-center justify-center gap-2 text-red-500 font-black text-xl tracking-wider uppercase animate-pulse">
+            <span>⚠️</span> AM BODEN! (DOWNED) <span>⚠️</span>
+          </div>
+          <div className="text-sm font-extrabold text-white/90 mt-1">
+            Krieche zu deinen Teammates für Wiederbelebung!
+          </div>
+
+          {/* Downed Bleedout Health Bar */}
+          <div className="mt-3">
+            <div className="flex justify-between text-xs font-mono font-bold text-white/80 mb-1">
+              <span>DOWNED HP</span>
+              <span className="text-red-400">{Math.round(downedHp)} / {maxDownedHp}</span>
+            </div>
+            <div className="w-full h-3.5 bg-red-950 border border-red-600/60 overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-red-600 via-amber-500 to-red-500 transition-all duration-100"
+                style={{ width: `${Math.max(0, Math.min(100, (downedHp / maxDownedHp) * 100))}%` }}
+              />
+            </div>
+          </div>
+
+          {isBeingRevived && (
+            <div className="mt-3 bg-emerald-950/85 border border-emerald-500 p-2.5 text-center">
+              <div className="text-xs font-black text-emerald-400 uppercase tracking-widest animate-pulse">
+                💚 {revivingTeammateName || 'Teammate'} belebt dich wieder...
+              </div>
+              <div className="w-full h-2.5 bg-black/60 border border-emerald-500/50 mt-1.5 overflow-hidden">
+                <div
+                  className="h-full bg-emerald-400 transition-all duration-75"
+                  style={{ width: `${Math.round(reviveProgress * 100)}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Local Player Reviving Teammate HUD Progress Bar */}
+      {localRevivingTargetId && !isEliminated && (
+        <div
+          data-testid="hud-reviving-progress"
+          className="fixed left-1/2 top-[46%] -translate-x-1/2 bg-black/90 border-2 border-emerald-400 px-6 py-3.5 text-center shadow-2xl max-w-md w-full z-30"
+        >
+          <div className="text-emerald-400 font-black text-lg tracking-wider uppercase flex items-center justify-center gap-2">
+            <span>➕</span> TEAMMATE WIRD WIEDERBELEBT... <span>➕</span>
+          </div>
+          <div className="text-xs font-bold text-white/80 mt-1">
+            [E] gedrückt halten (5.0s für Wiederbelebung auf 20 HP)
+          </div>
+          <div className="w-full h-3.5 bg-black/70 border border-emerald-500/60 mt-2 overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-emerald-500 to-emerald-300 transition-all duration-75"
+              style={{ width: `${Math.round(reviveProgress * 100)}%` }}
+            />
+          </div>
+          <div className="text-right text-[11px] font-mono text-emerald-300 mt-1">
+            {(5.0 * (1 - reviveProgress)).toFixed(1)}s verbleibend
+          </div>
+        </div>
+      )}
+
       {/* Peripheral Damage Flash Vignette */}
       {damageFlashAlpha > 0.01 && (
         <div

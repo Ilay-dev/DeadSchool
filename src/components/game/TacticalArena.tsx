@@ -30,6 +30,41 @@ import {
 } from './Player';
 import { MapEnvironment } from './MapEnvironment';
 
+function createDownedTeammateTexture(
+  name: string,
+  downedHp: number,
+  isFriendly: boolean
+): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 96;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.clearRect(0, 0, 256, 96);
+    // Dark backdrop with vibrant red/yellow border
+    ctx.fillStyle = 'rgba(15, 17, 23, 0.92)';
+    ctx.fillRect(8, 6, 240, 84);
+    ctx.strokeStyle = isFriendly ? '#22c55e' : '#ef4444';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(8, 6, 240, 84);
+
+    ctx.font = 'bold 22px "Plus Jakarta Sans", "Chakra Petch", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = isFriendly ? '#4ade80' : '#f87171';
+    ctx.fillText(`✚ ${name}`, 128, 32);
+
+    ctx.font = 'bold 15px "Plus Jakarta Sans", sans-serif';
+    ctx.fillStyle = isFriendly ? '#facc15' : '#e2e8f0';
+    const subText = isFriendly
+      ? `[E] WIEDERBELEBEN (${Math.round(downedHp)} HP)`
+      : `AM BODEN (${Math.round(downedHp)} HP)`;
+    ctx.fillText(subText, 128, 64);
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 function createNameplateTexture(
   name: string,
   team: 'alpha' | 'bravo',
@@ -272,6 +307,7 @@ export function TacticalSoldierMesh({
   isFiring?: boolean;
   liveActor?: RemoteActor;
 }) {
+  const isActorDowned = Boolean(liveActor?.isDowned);
   let baseUniform = team === 'alpha' ? '#2c3847' : '#422c2c';
   let baseVest = '#141619';
   let baseAccent = team === 'alpha' ? '#2b7fff' : '#e74c3c';
@@ -304,6 +340,21 @@ export function TacticalSoldierMesh({
     baseVest = '#fff000';
     baseAccent = '#ef4444';
     baseCap = '#0050aa';
+  } else if (soldierSkin === 'toxic_hazard') {
+    baseUniform = '#14532d';
+    baseVest = '#0f172a';
+    baseAccent = '#22c55e';
+    baseCap = '#166534';
+  } else if (soldierSkin === 'blood_samurai') {
+    baseUniform = '#7f1d1d';
+    baseVest = '#18181b';
+    baseAccent = '#f59e0b';
+    baseCap = '#991b1b';
+  } else if (soldierSkin === 'arctic_specops') {
+    baseUniform = '#f1f5f9';
+    baseVest = '#334155';
+    baseAccent = '#0ea5e9';
+    baseCap = '#e2e8f0';
   }
 
   const uniformColor = isHit
@@ -382,6 +433,8 @@ export function TacticalSoldierMesh({
     let headRotX = 0;
     let headRotY = 0;
 
+    const isActorDowned = Boolean(liveActor?.isDowned);
+
     if (activeStunned) {
       // 1. Stunned / Frozen animation by Lidl Scanner (10s freeze)
       const twitch = Math.sin(t * 38) * 0.04;
@@ -390,6 +443,26 @@ export function TacticalSoldierMesh({
       headRotY = twitch * 2.5;
       leftArmRotX = 0.15 + twitch;
       rightArmRotX = 0.25 - twitch;
+    } else if (isActorDowned) {
+      // 1b. Fortnite-Style Downed (DBNO) Crawling Animation
+      rootY = -0.72;
+      rootRotX = 0.08;
+      upperBodyRotX = 1.35; // Lying flat on ground
+      upperBodyRotZ = Math.sin(t * 4.5) * 0.08;
+
+      if (activeMoving) {
+        const crawlStride = Math.sin(t * 5.2);
+        leftArmRotX = 1.05 + crawlStride * 0.45;
+        rightArmRotX = 1.05 - crawlStride * 0.45;
+        leftLegRotX = -1.45 + crawlStride * 0.25;
+        rightLegRotX = -1.45 - crawlStride * 0.25;
+      } else {
+        leftArmRotX = 1.15;
+        rightArmRotX = 1.15;
+        leftLegRotX = -1.45;
+        rightLegRotX = -1.45;
+      }
+      headRotX = -0.45; // Look up/forward while crawling
     } else if (activeSliding) {
       // 2. Tactical Combat Slide Pose (Reclined torso, forward extended leg, tuck leg)
       rootY = -0.42;
@@ -537,10 +610,24 @@ export function TacticalSoldierMesh({
             <boxGeometry args={[0.21, 0.78, 0.24]} />
             <meshStandardMaterial color={uniformColor} roughness={0.75} metalness={0.1} />
           </mesh>
+          {/* Tactical Molded Knee Pad with Rivet */}
+          <mesh position={[0, -0.38, 0.13]} userData={{ hitZone: 'legs' }}>
+            <boxGeometry args={[0.22, 0.16, 0.05]} />
+            <meshStandardMaterial color="#111317" roughness={0.45} metalness={0.4} />
+          </mesh>
+          <mesh position={[0, -0.38, 0.158]}>
+            <cylinderGeometry args={[0.015, 0.015, 0.01, 8]} />
+            <meshStandardMaterial color="#3b4252" roughness={0.2} metalness={0.9} />
+          </mesh>
           {/* Tactical Boot */}
           <mesh position={[0, -0.74, 0.03]} userData={{ hitZone: 'legs' }}>
             <boxGeometry args={[0.22, 0.12, 0.28]} />
             <meshStandardMaterial color="#0e1014" roughness={0.8} />
+          </mesh>
+          {/* Lugged Boot Tread Sole */}
+          <mesh position={[0, -0.80, 0.04]}>
+            <boxGeometry args={[0.23, 0.024, 0.30]} />
+            <meshStandardMaterial color="#050608" roughness={0.95} />
           </mesh>
         </group>
 
@@ -554,19 +641,48 @@ export function TacticalSoldierMesh({
             <boxGeometry args={[0.21, 0.78, 0.24]} />
             <meshStandardMaterial color={uniformColor} roughness={0.75} metalness={0.1} />
           </mesh>
+          {/* Tactical Molded Knee Pad with Rivet */}
+          <mesh position={[0, -0.38, 0.13]} userData={{ hitZone: 'legs' }}>
+            <boxGeometry args={[0.22, 0.16, 0.05]} />
+            <meshStandardMaterial color="#111317" roughness={0.45} metalness={0.4} />
+          </mesh>
+          <mesh position={[0, -0.38, 0.158]}>
+            <cylinderGeometry args={[0.015, 0.015, 0.01, 8]} />
+            <meshStandardMaterial color="#3b4252" roughness={0.2} metalness={0.9} />
+          </mesh>
+          {/* Drop-Leg Holster with Sidearm Pistol on Right Thigh */}
+          <group position={[0.13, -0.18, 0.04]} rotation={[0, 0, -0.06]}>
+            <mesh>
+              <boxGeometry args={[0.05, 0.18, 0.09]} />
+              <meshStandardMaterial color="#0f1115" roughness={0.5} metalness={0.6} />
+            </mesh>
+            <mesh position={[0, 0.08, -0.01]} rotation={[-0.2, 0, 0]}>
+              <boxGeometry args={[0.03, 0.06, 0.04]} />
+              <meshStandardMaterial color="#1f232b" roughness={0.3} metalness={0.8} />
+            </mesh>
+          </group>
           {/* Tactical Boot */}
           <mesh position={[0, -0.74, 0.03]} userData={{ hitZone: 'legs' }}>
             <boxGeometry args={[0.22, 0.12, 0.28]} />
             <meshStandardMaterial color="#0e1014" roughness={0.8} />
           </mesh>
+          {/* Lugged Boot Tread Sole */}
+          <mesh position={[0, -0.80, 0.04]}>
+            <boxGeometry args={[0.23, 0.024, 0.30]} />
+            <meshStandardMaterial color="#050608" roughness={0.95} />
+          </mesh>
         </group>
 
         {/* UPPER BODY (TORSO, VEST, ARMS, HEAD, WEAPON) */}
         <group ref={upperBodyRef} position={[0, 0.8, 0]}>
-          {/* Belt & Holster */}
+          {/* Belt & Buckle */}
           <mesh position={[0, 0, 0]} userData={{ hitZone: 'body' }}>
             <boxGeometry args={[0.54, 0.09, 0.32]} />
             <meshStandardMaterial color="#111316" roughness={0.5} metalness={0.3} />
+          </mesh>
+          <mesh position={[0, 0, 0.165]}>
+            <boxGeometry args={[0.08, 0.06, 0.015]} />
+            <meshStandardMaterial color="#3b4252" roughness={0.25} metalness={0.85} />
           </mesh>
 
           {/* Torso & Kevlar Vest */}
@@ -580,6 +696,7 @@ export function TacticalSoldierMesh({
             <meshStandardMaterial color={uniformColor} roughness={0.7} metalness={0.15} />
           </mesh>
 
+          {/* Heavy Tactical MOLLE Plate Carrier */}
           <mesh
             position={[0, 0.32, 0]}
             userData={{ hitZone: 'body' }}
@@ -590,6 +707,7 @@ export function TacticalSoldierMesh({
             <meshStandardMaterial color={vestColor} roughness={0.5} metalness={0.25} />
           </mesh>
 
+          {/* Team Accent Stripes */}
           <mesh position={[0, 0.44, 0.175]} userData={{ hitZone: 'body' }}>
             <boxGeometry args={[0.36, 0.07, 0.02]} />
             <meshStandardMaterial
@@ -609,12 +727,32 @@ export function TacticalSoldierMesh({
             />
           </mesh>
 
+          {/* Triple Front PMAG/STANAG Mag Pouches */}
           {[-0.15, 0, 0.15].map((px) => (
-            <mesh key={px} position={[px, 0.16, 0.18]} userData={{ hitZone: 'body' }}>
-              <boxGeometry args={[0.11, 0.17, 0.06]} />
-              <meshStandardMaterial color="#0b0c0e" roughness={0.5} />
-            </mesh>
+            <group key={px} position={[px, 0.16, 0.18]} userData={{ hitZone: 'body' }}>
+              <mesh>
+                <boxGeometry args={[0.11, 0.17, 0.06]} />
+                <meshStandardMaterial color="#0b0c0e" roughness={0.5} />
+              </mesh>
+              {/* Mag pouch pull tab */}
+              <mesh position={[0, 0.09, 0.01]}>
+                <boxGeometry args={[0.04, 0.02, 0.02]} />
+                <meshStandardMaterial color="#22252a" roughness={0.7} />
+              </mesh>
+            </group>
           ))}
+
+          {/* Radio Pouch with Extended Flexible Comms Antenna */}
+          <group position={[-0.20, 0.42, 0.18]}>
+            <mesh>
+              <boxGeometry args={[0.09, 0.14, 0.06]} />
+              <meshStandardMaterial color="#14171d" roughness={0.6} />
+            </mesh>
+            <mesh position={[0, 0.18, 0]}>
+              <cylinderGeometry args={[0.004, 0.004, 0.26, 8]} />
+              <meshStandardMaterial color="#0a0c0e" roughness={0.3} metalness={0.7} />
+            </mesh>
+          </group>
 
           {outlineHex && (
             <mesh position={[0, 0.3, 0]} userData={{ hitZone: 'body' }}>
@@ -623,7 +761,7 @@ export function TacticalSoldierMesh({
             </mesh>
           )}
 
-          {/* Left Arm Pivot */}
+          {/* Left Arm Pivot with Molded Elbow Pad */}
           <group ref={leftArmPivotRef} position={[-0.35, 0.35, 0.06]}>
             <mesh
               position={[0, -0.22, 0]}
@@ -632,6 +770,11 @@ export function TacticalSoldierMesh({
             >
               <boxGeometry args={[0.17, 0.52, 0.17]} />
               <meshStandardMaterial color={uniformColor} roughness={0.75} />
+            </mesh>
+            {/* Tactical Elbow Pad */}
+            <mesh position={[0, -0.24, -0.09]}>
+              <boxGeometry args={[0.18, 0.13, 0.04]} />
+              <meshStandardMaterial color="#111317" roughness={0.45} metalness={0.4} />
             </mesh>
             <mesh position={[-0.03, -0.5, 0.06]} userData={{ hitZone: 'body' }}>
               <boxGeometry args={[0.15, 0.15, 0.16]} />
@@ -649,32 +792,39 @@ export function TacticalSoldierMesh({
               <boxGeometry args={[0.17, 0.52, 0.17]} />
               <meshStandardMaterial color={uniformColor} roughness={0.75} />
             </mesh>
+            {/* Tactical Elbow Pad */}
+            <mesh position={[0, -0.24, -0.09]}>
+              <boxGeometry args={[0.18, 0.13, 0.04]} />
+              <meshStandardMaterial color="#111317" roughness={0.45} metalness={0.4} />
+            </mesh>
 
-            {/* Held Weapon Mount */}
-            <group
-              position={showcasePose ? [-0.01, 0.36, 0.1] : [-0.11, -0.16, 0.20]}
-              rotation={showcasePose ? [0.95, 0.2, 0.55] : [0, Math.PI, 0]}
-              scale={showcasePose ? 1.05 : 0.9}
-            >
-              <WeaponModelGeometry weaponId={liveActor?.weaponClass || weaponClass} />
+            {/* Held Weapon Mount (hidden if player is downed crawling) */}
+            {!isActorDowned && (
+              <group
+                position={showcasePose ? [-0.01, 0.36, 0.1] : [-0.11, -0.16, 0.20]}
+                rotation={showcasePose ? [0.95, 0.2, 0.55] : [0, Math.PI, 0]}
+                scale={showcasePose ? 1.05 : 0.9}
+              >
+                <WeaponModelGeometry weaponId={liveActor?.weaponClass || weaponClass} />
 
-              {/* Muzzle Flash & Laser on remote player's weapon when firing */}
-              {isFiring && (
-                <mesh position={[0, 0.02, -0.68]} rotation={[0, 0, Math.random() * Math.PI]}>
-                  {(liveActor?.weaponClass || weaponClass) === 'lidl_scanner' ? (
-                    <>
-                      <boxGeometry args={[0.22, 0.01, 0.65]} />
-                      <meshBasicMaterial color="#ff1e1e" transparent opacity={0.92} />
-                    </>
-                  ) : (
-                    <>
-                      <coneGeometry args={[0.075, 0.2, 6]} />
-                      <meshBasicMaterial color="#ffbe3b" transparent opacity={0.92} />
-                    </>
-                  )}
-                </mesh>
-              )}
-            </group>
+                {/* Muzzle Flash & Laser on remote player's weapon when firing */}
+                {isFiring && (
+                  <mesh position={[0, 0.02, -0.68]} rotation={[0, 0, Math.random() * Math.PI]}>
+                    {(liveActor?.weaponClass || weaponClass) === 'lidl_scanner' ? (
+                      <>
+                        <boxGeometry args={[0.22, 0.01, 0.65]} />
+                        <meshBasicMaterial color="#ff1e1e" transparent opacity={0.92} />
+                      </>
+                    ) : (
+                      <>
+                        <coneGeometry args={[0.075, 0.2, 6]} />
+                        <meshBasicMaterial color="#ffbe3b" transparent opacity={0.92} />
+                      </>
+                    )}
+                  </mesh>
+                )}
+              </group>
+            )}
           </group>
 
           {/* HEAD HITBOX ZONE WITH PIVOT */}
@@ -700,17 +850,57 @@ export function TacticalSoldierMesh({
               <meshBasicMaterial color="#1a1c1e" />
             </mesh>
 
-            <mesh position={[0, 0.23, 0]} userData={{ isHead: true, hitZone: 'head' }}>
-              <boxGeometry args={[0.34, 0.1, 0.34]} />
-              <meshStandardMaterial color={capColor} roughness={0.65} />
+            {/* FAST High-Cut Tactical Ballistic Helmet */}
+            <mesh position={[0, 0.22, 0]} userData={{ isHead: true, hitZone: 'head' }} castShadow>
+              <boxGeometry args={[0.36, 0.18, 0.36]} />
+              <meshStandardMaterial color={capColor} roughness={0.55} metalness={0.25} />
             </mesh>
-            <mesh
-              position={[0, 0.19, 0.21]}
-              rotation={[0.1, 0, 0]}
-              userData={{ isHead: true, hitZone: 'head' }}
-            >
-              <boxGeometry args={[0.32, 0.035, 0.14]} />
-              <meshStandardMaterial color={capColor} roughness={0.65} />
+            {/* Side ARC Accessory Rails (Left & Right) */}
+            <mesh position={[-0.185, 0.20, 0.02]} rotation={[0, 0, 0.08]}>
+              <boxGeometry args={[0.016, 0.042, 0.18]} />
+              <meshStandardMaterial color="#111317" roughness={0.35} metalness={0.8} />
+            </mesh>
+            <mesh position={[0.185, 0.20, 0.02]} rotation={[0, 0, -0.08]}>
+              <boxGeometry args={[0.016, 0.042, 0.18]} />
+              <meshStandardMaterial color="#111317" roughness={0.35} metalness={0.8} />
+            </mesh>
+            {/* Front Wilcox NVG Mount Shroud Plate */}
+            <mesh position={[0, 0.22, 0.185]}>
+              <boxGeometry args={[0.08, 0.075, 0.018]} />
+              <meshStandardMaterial color="#1a1c22" roughness={0.3} metalness={0.85} />
+            </mesh>
+            {/* Tactical Comms Headset (Ear cups + headband + boom mic) */}
+            <mesh position={[-0.18, 0.08, 0]}>
+              <cylinderGeometry args={[0.038, 0.038, 0.025, 12]} />
+              <meshStandardMaterial color="#151820" roughness={0.5} metalness={0.5} />
+            </mesh>
+            <mesh position={[0.18, 0.08, 0]}>
+              <cylinderGeometry args={[0.038, 0.038, 0.025, 12]} />
+              <meshStandardMaterial color="#151820" roughness={0.5} metalness={0.5} />
+            </mesh>
+            {/* Boom microphone curving toward mouth */}
+            <mesh position={[0.16, 0.02, 0.12]} rotation={[0.4, 0.3, 0]}>
+              <cylinderGeometry args={[0.004, 0.004, 0.14, 8]} />
+              <meshStandardMaterial color="#0c0e12" roughness={0.4} metalness={0.7} />
+            </mesh>
+            <mesh position={[0.12, -0.02, 0.17]}>
+              <sphereGeometry args={[0.012, 8, 8]} />
+              <meshStandardMaterial color="#15171d" roughness={0.9} />
+            </mesh>
+            {/* Combat Goggles / Visor strapped over forehead/eyes */}
+            <mesh position={[0, 0.12, 0.175]}>
+              <boxGeometry args={[0.26, 0.065, 0.026]} />
+              <meshStandardMaterial
+                color={teamAccentColor}
+                emissive={teamAccentColor}
+                emissiveIntensity={0.2}
+                roughness={0.15}
+                metalness={0.4}
+              />
+            </mesh>
+            <mesh position={[0, 0.12, 0]}>
+              <boxGeometry args={[0.365, 0.025, 0.365]} />
+              <meshStandardMaterial color="#0b0d10" roughness={0.8} />
             </mesh>
           </group>
         </group>
@@ -725,6 +915,8 @@ function ActorBillboardLabel({
   hpRatio,
   isStunned,
   isTeammate,
+  isDowned = false,
+  downedHp = 100,
   hasLineOfSight = true,
 }: {
   name: string;
@@ -732,13 +924,19 @@ function ActorBillboardLabel({
   hpRatio: number;
   isStunned: boolean;
   isTeammate: boolean;
+  isDowned?: boolean;
+  downedHp?: number;
   hasLineOfSight?: boolean;
 }) {
   // Quantize HP ratio to 40 steps (2.5%) to cache textures efficiently while remaining silky smooth
   const quantizedHp = Math.round(Math.max(0, Math.min(1, hpRatio)) * 40) / 40;
-  const tex = useMemo(
+  const nameplateTex = useMemo(
     () => createNameplateTexture(name, team, quantizedHp, isStunned),
     [name, team, quantizedHp, isStunned]
+  );
+  const downedTex = useMemo(
+    () => createDownedTeammateTexture(name, downedHp, isTeammate),
+    [name, downedHp, isTeammate]
   );
 
   // Requirement: "Seine Teammates kann man natürlich durch Wände sehen, seine Gegner natürlich nicht."
@@ -747,14 +945,18 @@ function ActorBillboardLabel({
     return null;
   }
 
+  const activeTex = isDowned ? downedTex : nameplateTex;
+  const posY = isDowned ? 0.95 : 2.18;
+  const scale: [number, number, number] = isDowned ? [1.6, 0.65, 1] : [1.45, 0.54, 1];
+
   return (
     <sprite
-      position={[0, 2.18, 0]}
-      scale={[1.45, 0.54, 1]}
+      position={[0, posY, 0]}
+      scale={scale}
       renderOrder={isTeammate ? 999 : 1}
     >
       <spriteMaterial
-        map={tex}
+        map={activeTex}
         transparent
         depthTest={!isTeammate}
       />
@@ -1261,18 +1463,10 @@ function RemoteActorsAndBots({
           renderStatesRef.current[actor.id] = rState;
         }
 
-        const packetAgeSec = Math.min(
-          0.04,
-          Math.max(0, (nowPerf - (actor.lastUpdatePerfMs || nowPerf)) / 1000)
-        );
-        const vx = actor.velocity?.[0] || 0;
-        const vy = actor.velocity?.[1] || 0;
-        const vz = actor.velocity?.[2] || 0;
-
-        // Sub-frame dead-reckoning between 60 FPS WebRTC DataChannel ticks
-        const predX = actor.targetPosition[0] + vx * packetAgeSec * 0.5;
-        const predY = Math.max(0.08, actor.targetPosition[1] + vy * packetAgeSec * 0.35);
-        const predZ = actor.targetPosition[2] + vz * packetAgeSec * 0.5;
+        // 60-240 FPS smooth critically-damped position tracking (zero micro-stutters or jitter)
+        const predX = actor.targetPosition[0];
+        const predY = Math.max(0.08, actor.targetPosition[1]);
+        const predZ = actor.targetPosition[2];
 
         const distError = Math.hypot(
           predX - rState.pos[0],
@@ -1280,18 +1474,17 @@ function RemoteActorsAndBots({
           predZ - rState.pos[2]
         );
 
-        if (distError > 8.5) {
+        if (distError > 6.0) {
           // Instant snap ONLY on actual respawn/teleport across the arena
           rState.pos[0] = predX;
           rState.pos[1] = predY;
           rState.pos[2] = predZ;
         } else {
-          // Smooth 60-240 FPS critically-damped tracking with velocity feed-forward
-          rState.pos[0] += vx * dt * 0.35;
-          rState.pos[2] += vz * dt * 0.35;
-          rState.pos[0] = THREE.MathUtils.damp(rState.pos[0], predX, 28, dt);
-          rState.pos[1] = THREE.MathUtils.damp(rState.pos[1], predY, 30, dt);
-          rState.pos[2] = THREE.MathUtils.damp(rState.pos[2], predZ, 28, dt);
+          // Pure critically-damped spring interpolation - NO double-velocity adding!
+          const smoothSpeed = 22;
+          rState.pos[0] = THREE.MathUtils.damp(rState.pos[0], predX, smoothSpeed, dt);
+          rState.pos[1] = THREE.MathUtils.damp(rState.pos[1], predY, 26, dt);
+          rState.pos[2] = THREE.MathUtils.damp(rState.pos[2], predZ, smoothSpeed, dt);
         }
 
         // Shortest-arc angular yaw interpolation (prevents 360-degree spin at +/-PI boundary)
@@ -1373,6 +1566,8 @@ function RemoteActorsAndBots({
                 hpRatio={actor.hp / actor.maxHp}
                 isStunned={isStunned}
                 isTeammate={isTeammate}
+                isDowned={Boolean(actor.isDowned)}
+                downedHp={actor.downedHp ?? 100}
                 hasLineOfSight={losMapRef.current[actor.id] ?? true}
               />
             )}

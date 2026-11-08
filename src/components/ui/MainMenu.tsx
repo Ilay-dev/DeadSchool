@@ -183,6 +183,7 @@ export function MainMenuScreen() {
   const equippedSoldierSkin = useGameStore((s) => s.equippedSoldierSkin);
   const setEquippedSoldierSkin = useGameStore((s) => s.setEquippedSoldierSkin);
   const [shopCategory, setShopCategory] = useState<'weapons' | 'soldiers'>('weapons');
+  const [previewSkinId, setPreviewSkinId] = useState<string | null>(null);
 
   const [joinOverlayOpen, setJoinOverlayOpen] = useState(false);
   const [joinCodeInput, setJoinCodeInput] = useState('');
@@ -290,252 +291,421 @@ export function MainMenuScreen() {
         </main>
       )}
 
-      {topNavTab === 'SHOP' && (
-        <main className="flex-1 flex items-center justify-center pointer-events-auto px-6 py-4 overflow-y-auto max-h-[85vh]">
-          <div className="w-full max-w-4xl bg-black/85 border border-white/20 p-6 space-y-5 shadow-2xl backdrop-blur-md">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-4">
-              <div>
-                <div className="flex items-center gap-3">
-                  <h2 className="text-2xl font-black tracking-wider text-white uppercase">
-                    DEAD SCHOOL SKIN-STORE
-                  </h2>
-                  <span className="px-2.5 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-xs font-black uppercase rounded">
-                    ALLE SKINS 100% KOSTENLOS (0€)
-                  </span>
+      {topNavTab === 'SHOP' && (() => {
+        const weaponSkinsList = [
+          {
+            id: 'default',
+            name: 'Standard Fabrikneu',
+            desc: 'Klassisches mattes Schwarz & Polymer-Militärfinish.',
+            color: '#334155',
+            secondary: '#1e293b',
+            badge: 'Standard',
+            features: ['Polymer-Receiver', 'Mattes Finish', 'Mil-Spec Schaft'],
+          },
+          {
+            id: 'dragon_flame',
+            name: 'Dragon Flame',
+            desc: 'Feuriges Magma-Rot, vulkanisches Orange & glühende Hitze.',
+            color: '#ef4444',
+            secondary: '#ea580c',
+            badge: 'Legendär',
+            features: ['Vulkan-Glühen', 'Magma Emitter', 'Hitze-resistent'],
+          },
+          {
+            id: 'cyber_neon',
+            name: 'Cyber Neon 2077',
+            desc: 'Futuristisches Cyberpunk Cyan, Magenta & leuchtender LED-Glow.',
+            color: '#06b6d4',
+            secondary: '#ec4899',
+            badge: 'Exklusiv',
+            features: ['LED-Kühlrippen', 'Hologramm Rail', 'Neon Cyan Tracer'],
+          },
+          {
+            id: 'gold_midnight',
+            name: 'Midnight Gold Deluxe',
+            desc: 'Edles Tiefschwarz mit 24K polierten Gold-Elementen.',
+            color: '#f59e0b',
+            secondary: '#18181b',
+            badge: 'Luxus',
+            features: ['24K Vergoldung', 'Carbon-Inlays', 'Polierter Lauf'],
+          },
+          {
+            id: 'arctic_glacier',
+            name: 'Arctic Glacier',
+            desc: 'Frostiges Gletscherweiß mit arktischem Eisblau.',
+            color: '#38bdf8',
+            secondary: '#e0f2fe',
+            badge: 'Arktisch',
+            features: ['Eiskristall-Muster', 'Frost-Beschichtung', 'Schnee-Tarnung'],
+          },
+          {
+            id: 'obsidian_stealth',
+            name: 'Obsidian Stealth',
+            desc: 'Reflexionsfreies Tiefschwarz für lautlose Spezialeinsätze.',
+            color: '#27272a',
+            secondary: '#09090b',
+            badge: 'Spec-Ops',
+            features: ['Anti-Reflex Beschichtung', 'Schallabsorbierend', 'Taktisches Kevlar'],
+          },
+          {
+            id: 'lidl_edition',
+            name: 'Lidl Special Edition',
+            desc: 'Kultiges blau-gelb-rotes Supermarkt Champion Design.',
+            color: '#0050aa',
+            secondary: '#fff000',
+            badge: 'Kult',
+            features: ['Lidl-Farben', 'Supermarkt-Garantie', 'Kong-Strong Power'],
+          },
+        ];
+
+        const soldierSkinsList = [
+          {
+            id: 'default',
+            name: 'Standard Rekrut',
+            desc: 'Klassische taktische Einsatzuniform der Alpha & Bravo Divisionen mit FAST-Helm und Molle-Weste.',
+            color: '#334155',
+            secondary: '#1e293b',
+            badge: 'Standard',
+            features: ['FAST Helm', 'ARC Rails', 'Molle Plate-Carrier', 'Knie- & Ellbogenschoner'],
+          },
+          {
+            id: 'ghost_infiltrator',
+            name: 'Ghost Infiltrator',
+            desc: 'Tarnschwarzer Nachteinsatzanzug mit getöntem NVG-Visier und schallgedämpftem Holster.',
+            color: '#09090b',
+            secondary: '#38bdf8',
+            badge: 'Spec-Ops',
+            features: ['Nachtvisier-Shroud', 'Blackout-Tarnung', 'Kevlar-Verstärkung'],
+          },
+          {
+            id: 'desert_commando',
+            name: 'Desert Commando',
+            desc: 'Sandfarbene Wüstentarnung mit verstärkter ballistischer Weste und Wüstengoggles.',
+            color: '#c2956e',
+            secondary: '#8c6b4f',
+            badge: 'Militär',
+            features: ['Sandfilter-Brille', 'Wüsten-Camo', 'Staubfeste Pouches'],
+          },
+          {
+            id: 'cyber_raider',
+            name: 'Cyber Raider',
+            desc: 'High-Tech Titanrüstung mit Neon-Energieelementen und kybernetischem Headset.',
+            color: '#0284c7',
+            secondary: '#06b6d4',
+            badge: 'Cyberpunk',
+            features: ['Titan-Exo Platten', 'Neon HUD Visier', 'Kybernetische Comms'],
+          },
+          {
+            id: 'campus_enforcer',
+            name: 'Campus Security',
+            desc: 'Dunkelblauer Wachschutz-Suit der Timber School mit gelben Reflexstreifen.',
+            color: '#1e3a8a',
+            secondary: '#facc15',
+            badge: 'Security',
+            features: ['Reflexstreifen', 'Schutzweste Klasse IV', 'Security Badge'],
+          },
+          {
+            id: 'lidl_manager',
+            name: 'Lidl Filialleiter',
+            desc: 'Legendäre Lidl-Manager-Uniform mit gelber Sicherheitsweste und blauer Kappe.',
+            color: '#fff000',
+            secondary: '#0050aa',
+            badge: 'Legende',
+            features: ['Sicherheitsweste', 'Lidl Kappe', 'Kong-Strong Halfter'],
+          },
+          {
+            id: 'toxic_hazard',
+            name: 'Toxic Biohazard',
+            desc: 'Gefahrgut-Spezialeinheit mit neongrünem Schutzanzug, Biohazard-Emblem und Gasmasken-Mount.',
+            color: '#22c55e',
+            secondary: '#14532d',
+            badge: 'Biohazard',
+            features: ['Chemieschutz-Gewebe', 'Filtermasken-Dock', 'Toxische Warnstreifen'],
+          },
+          {
+            id: 'blood_samurai',
+            name: 'Crimson Samurai',
+            desc: 'Tiefroter Elitesoldat mit blutroter Panzerung, Carbon-Akzenten und goldener Rangmarkierung.',
+            color: '#dc2626',
+            secondary: '#7f1d1d',
+            badge: 'Crimson',
+            features: ['Verstärkte Brustpanzerung', 'Goldene Rangabzeichen', 'Carbon-Beinschützer'],
+          },
+          {
+            id: 'arctic_specops',
+            name: 'Arctic Spec-Ops',
+            desc: 'Weiß-bläuliche Schneetarnung mit wärmeisoliertem Anzug für arktische Spezialeinsätze.',
+            color: '#38bdf8',
+            secondary: '#f1f5f9',
+            badge: 'Arktis',
+            features: ['Thermo-Kevlar', 'Schnee-Tarnmuster', 'Polar-Entspiegelung'],
+          },
+        ];
+
+        const isWeaponCategory = shopCategory === 'weapons';
+        const currentList = isWeaponCategory ? weaponSkinsList : soldierSkinsList;
+        const currentEquippedId = isWeaponCategory ? equippedWeaponSkin : equippedSoldierSkin;
+        const activePreviewSkin =
+          currentList.find((s) => s.id === previewSkinId) ||
+          currentList.find((s) => s.id === currentEquippedId) ||
+          currentList[0];
+        const isPreviewEquipped = currentEquippedId === activePreviewSkin.id;
+
+        return (
+          <main className="flex-1 flex items-center justify-center pointer-events-auto px-6 py-4 overflow-y-auto max-h-[88vh]">
+            <div className="w-full max-w-6xl bg-black/85 border border-white/20 p-6 space-y-5 shadow-2xl backdrop-blur-md">
+              {/* Header & Category Switcher */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-4">
+                <div>
+                  <div className="flex items-center gap-3">
+                    <h2 className="text-2xl font-black tracking-wider text-white uppercase">
+                      DEAD SCHOOL SKIN-STORE &amp; ARSENAL
+                    </h2>
+                    <span className="px-2.5 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-xs font-black uppercase rounded">
+                      ALLE SKINS 100% KOSTENLOS (0€)
+                    </span>
+                  </div>
+                  <p className="text-xs text-white/60 mt-1">
+                    Wähle deinen Style! Hochdetaillierte Soldaten-Modelle &amp; Waffen-Lackierungen sofort frei verfügbar.
+                  </p>
                 </div>
-                <p className="text-xs text-white/60 mt-1">
-                  Wähle deinen Style! Alle Waffen- &amp; Charakter-Skins sind sofort frei verfügbar.
-                </p>
+
+                <div className="flex items-center bg-white/10 p-1 border border-white/15">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShopCategory('weapons');
+                      setPreviewSkinId(null);
+                    }}
+                    className={`px-4 py-1.5 text-xs font-black uppercase transition-colors cursor-pointer ${
+                      shopCategory === 'weapons'
+                        ? 'bg-[#2b7fff] text-white shadow'
+                        : 'text-white/60 hover:text-white'
+                    }`}
+                  >
+                    🔫 Waffen-Skins
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShopCategory('soldiers');
+                      setPreviewSkinId(null);
+                    }}
+                    className={`px-4 py-1.5 text-xs font-black uppercase transition-colors cursor-pointer ${
+                      shopCategory === 'soldiers'
+                        ? 'bg-[#2b7fff] text-white shadow'
+                        : 'text-white/60 hover:text-white'
+                    }`}
+                  >
+                    🪖 Charakter-Skins
+                  </button>
+                </div>
               </div>
 
-              {/* Category Switcher Tabs */}
-              <div className="flex items-center bg-white/10 p-1 border border-white/15">
-                <button
-                  type="button"
-                  onClick={() => setShopCategory('weapons')}
-                  className={`px-4 py-1.5 text-xs font-black uppercase transition-colors cursor-pointer ${
-                    shopCategory === 'weapons'
-                      ? 'bg-[#2b7fff] text-white shadow'
-                      : 'text-white/60 hover:text-white'
-                  }`}
+              {/* 2-Column Layout: Left Live 3D Preview Inspector, Right Selection Grid */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                {/* Left Live Preview Showcase Card */}
+                <div
+                  data-testid="shop-preview-panel"
+                  className="lg:col-span-4 bg-black/60 border border-white/15 p-5 flex flex-col justify-between space-y-4 rounded-sm shadow-xl"
+                  style={{
+                    background: `linear-gradient(145deg, rgba(15,23,42,0.95) 0%, rgba(0,0,0,0.85) 100%)`,
+                  }}
                 >
-                  🔫 Waffen-Skins
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShopCategory('soldiers')}
-                  className={`px-4 py-1.5 text-xs font-black uppercase transition-colors cursor-pointer ${
-                    shopCategory === 'soldiers'
-                      ? 'bg-[#2b7fff] text-white shadow'
-                      : 'text-white/60 hover:text-white'
-                  }`}
-                >
-                  🪖 Charakter-Skins
-                </button>
+                  <div>
+                    <div className="flex items-center justify-between pb-2 border-b border-white/10">
+                      <span className="text-[11px] font-mono font-bold tracking-widest uppercase text-white/60">
+                        ⚡ LIVE VORSCHAU // {isWeaponCategory ? 'WAFFE' : 'OPERATOR'}
+                      </span>
+                      <span
+                        className="px-2 py-0.5 text-[10px] font-mono font-black uppercase tracking-wider rounded border"
+                        style={{
+                          backgroundColor: `${activePreviewSkin.color}20`,
+                          borderColor: activePreviewSkin.color,
+                          color: activePreviewSkin.color,
+                        }}
+                      >
+                        {activePreviewSkin.badge}
+                      </span>
+                    </div>
+
+                    {/* Visual 3D Preview Viewport Simulation */}
+                    <div className="relative w-full h-44 my-3 bg-gradient-to-b from-black/80 to-slate-900/60 border border-white/10 rounded overflow-hidden flex flex-col items-center justify-center">
+                      <div
+                        className="absolute inset-0 opacity-20 pointer-events-none"
+                        style={{
+                          background: `radial-gradient(circle at center, ${activePreviewSkin.color} 0%, transparent 70%)`,
+                        }}
+                      />
+
+                      {/* Holographic Target Rings */}
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <div
+                          className="w-32 h-32 rounded-full border border-dashed opacity-30 animate-spin"
+                          style={{
+                            borderColor: activePreviewSkin.color,
+                            animationDuration: '24s',
+                          }}
+                        />
+                      </div>
+
+                      {/* Silhouette / Tactical Emblem */}
+                      <div className="relative z-10 flex flex-col items-center text-center px-4">
+                        <div
+                          className="w-14 h-14 rounded-full flex items-center justify-center text-2xl shadow-lg border-2 mb-2"
+                          style={{
+                            backgroundColor: activePreviewSkin.color,
+                            borderColor: activePreviewSkin.secondary,
+                            color: '#ffffff',
+                          }}
+                        >
+                          {isWeaponCategory ? '🎯' : '🪖'}
+                        </div>
+                        <div className="text-base font-extrabold text-white tracking-wide">
+                          {activePreviewSkin.name}
+                        </div>
+                        <div className="text-[11px] text-white/50 mt-0.5">
+                          Taktische Spezifikation v2.0
+                        </div>
+                      </div>
+
+                      {/* Color Palette Indicator */}
+                      <div className="absolute bottom-2 right-2 flex items-center gap-1.5 bg-black/60 px-2 py-0.5 rounded border border-white/10">
+                        <span
+                          className="w-3 h-3 rounded-full border border-white/40"
+                          style={{ backgroundColor: activePreviewSkin.color }}
+                        />
+                        <span
+                          className="w-3 h-3 rounded-full border border-white/40"
+                          style={{ backgroundColor: activePreviewSkin.secondary }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Description & Features */}
+                    <p className="text-xs text-white/70 leading-relaxed mb-3">
+                      {activePreviewSkin.desc}
+                    </p>
+
+                    <div className="space-y-1.5 pt-2 border-t border-white/10">
+                      <div className="text-[10px] font-mono font-bold uppercase tracking-wider text-white/50">
+                        AUSSTATTUNGSMERKMALE:
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {activePreviewSkin.features.map((feat, idx) => (
+                          <span
+                            key={idx}
+                            className="px-2 py-0.5 bg-white/5 border border-white/10 text-[11px] font-bold text-white/80 rounded"
+                          >
+                            ✓ {feat}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Equip Action Button */}
+                  <div className="pt-3 border-t border-white/10 flex items-center justify-between gap-3">
+                    <span className="text-sm font-black text-emerald-400">
+                      0€ KOSTENLOS
+                    </span>
+                    <button
+                      type="button"
+                      data-testid="shop-preview-equip-btn"
+                      onClick={() => {
+                        if (isWeaponCategory) {
+                          setEquippedWeaponSkin(activePreviewSkin.id);
+                        } else {
+                          setEquippedSoldierSkin(activePreviewSkin.id);
+                        }
+                      }}
+                      className={`flex-1 py-2 text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                        isPreviewEquipped
+                          ? 'bg-emerald-600 text-white cursor-default'
+                          : 'bg-[#2b7fff] hover:bg-[#3b8aff] text-white shadow-lg'
+                      }`}
+                    >
+                      {isPreviewEquipped ? '✓ Ausgerüstet' : 'Jetzt Ausrüsten'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Right Selection Grid */}
+                <div className="lg:col-span-8 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 max-h-[62vh] overflow-y-auto pr-1">
+                  {currentList.map((skin) => {
+                    const isEquipped = currentEquippedId === skin.id;
+                    const isPreviewed = activePreviewSkin.id === skin.id;
+
+                    return (
+                      <div
+                        key={skin.id}
+                        onClick={() => setPreviewSkinId(skin.id)}
+                        className={`relative bg-white/5 border p-3.5 flex flex-col justify-between transition-all cursor-pointer ${
+                          isPreviewed
+                            ? 'border-[#2b7fff] bg-[#2b7fff]/15 ring-2 ring-[#2b7fff]/50'
+                            : isEquipped
+                              ? 'border-emerald-500/60 bg-emerald-500/10'
+                              : 'border-white/10 hover:border-white/30 hover:bg-white/10'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className="h-2.5 w-6 rounded-full"
+                                style={{ backgroundColor: skin.color }}
+                              />
+                              <span
+                                className="h-2.5 w-3 rounded-full"
+                                style={{ backgroundColor: skin.secondary }}
+                              />
+                            </div>
+                            <span className="text-[10px] font-mono font-bold text-white/50 uppercase">
+                              {skin.badge}
+                            </span>
+                          </div>
+
+                          <div className="text-sm font-extrabold text-white tracking-wide">
+                            {skin.name}
+                          </div>
+                          <div className="text-[11px] text-white/60 mt-1 line-clamp-2">
+                            {skin.desc}
+                          </div>
+                        </div>
+
+                        <div className="mt-3 pt-2.5 border-t border-white/10 flex items-center justify-between gap-2">
+                          <span className="text-[11px] font-black text-emerald-400">
+                            0€ GRATIS
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (isWeaponCategory) {
+                                setEquippedWeaponSkin(skin.id);
+                              } else {
+                                setEquippedSoldierSkin(skin.id);
+                              }
+                              setPreviewSkinId(skin.id);
+                            }}
+                            className={`px-2.5 py-1 text-[11px] font-black uppercase transition-all cursor-pointer ${
+                              isEquipped
+                                ? 'bg-emerald-600 text-white cursor-default'
+                                : 'bg-[#2b7fff] hover:bg-[#3b8aff] text-white'
+                            }`}
+                          >
+                            {isEquipped ? '✓ Aktiv' : 'Ausrüsten'}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
-
-            {shopCategory === 'weapons' && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5 max-h-[58vh] overflow-y-auto pr-1">
-                {[
-                  {
-                    id: 'default',
-                    name: 'Standard Fabrikneu',
-                    desc: 'Klassisches mattes Schwarz & Polymer-Militärfinish.',
-                    color: '#334155',
-                    badge: 'Standard',
-                  },
-                  {
-                    id: 'dragon_flame',
-                    name: 'Dragon Flame',
-                    desc: 'Feuriges Magma-Rot, vulkanisches Orange & glühende Hitze.',
-                    color: '#ef4444',
-                    badge: 'Legendär',
-                  },
-                  {
-                    id: 'cyber_neon',
-                    name: 'Cyber Neon 2077',
-                    desc: 'Futuristisches Cyberpunk Cyan, Magenta & leuchtender LED-Glow.',
-                    color: '#06b6d4',
-                    badge: 'Exklusiv',
-                  },
-                  {
-                    id: 'gold_midnight',
-                    name: 'Midnight Gold Deluxe',
-                    desc: 'Edles Tiefschwarz mit 24K polierten Gold-Elementen.',
-                    color: '#f59e0b',
-                    badge: 'Luxus',
-                  },
-                  {
-                    id: 'arctic_glacier',
-                    name: 'Arctic Glacier',
-                    desc: 'Frostiges Gletscherweiß mit arktischem Eisblau.',
-                    color: '#38bdf8',
-                    badge: 'Arktisch',
-                  },
-                  {
-                    id: 'obsidian_stealth',
-                    name: 'Obsidian Stealth',
-                    desc: 'Reflexionsfreies Tiefschwarz für lautlose Spezialeinsätze.',
-                    color: '#27272a',
-                    badge: 'Spec-Ops',
-                  },
-                  {
-                    id: 'lidl_edition',
-                    name: 'Lidl Special Edition',
-                    desc: 'Kultiges blau-gelb-rotes Supermarkt Champion Design.',
-                    color: '#0050aa',
-                    badge: 'Kult',
-                  },
-                ].map((skin) => {
-                  const isEquipped = equippedWeaponSkin === skin.id;
-                  return (
-                    <div
-                      key={skin.id}
-                      className={`relative bg-white/5 border p-4 flex flex-col justify-between transition-all ${
-                        isEquipped
-                          ? 'border-[#2b7fff] bg-[#2b7fff]/10 ring-1 ring-[#2b7fff]'
-                          : 'border-white/10 hover:border-white/30 hover:bg-white/10'
-                      }`}
-                    >
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <div
-                            className="h-2 w-10 rounded-full"
-                            style={{ backgroundColor: skin.color }}
-                          />
-                          <span className="text-[10px] font-mono font-bold text-white/50 uppercase">
-                            {skin.badge}
-                          </span>
-                        </div>
-                        <div className="text-base font-extrabold text-white tracking-wide">
-                          {skin.name}
-                        </div>
-                        <div className="text-[11px] text-white/60 mt-1 line-clamp-2">
-                          {skin.desc}
-                        </div>
-                      </div>
-
-                      <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between gap-2">
-                        <span className="text-xs font-black text-emerald-400">
-                          0€ KOSTENLOS
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setEquippedWeaponSkin(skin.id)}
-                          className={`px-3 py-1.5 text-xs font-black uppercase transition-all cursor-pointer ${
-                            isEquipped
-                              ? 'bg-emerald-600 text-white cursor-default'
-                              : 'bg-[#2b7fff] hover:bg-[#3b8aff] text-white'
-                          }`}
-                        >
-                          {isEquipped ? '✓ Ausgerüstet' : 'Ausrüsten'}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {shopCategory === 'soldiers' && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5 max-h-[58vh] overflow-y-auto pr-1">
-                {[
-                  {
-                    id: 'default',
-                    name: 'Standard Rekrut',
-                    desc: 'Klassische taktische Einsatzuniform der Alpha & Bravo Divisionen.',
-                    color: '#334155',
-                    badge: 'Standard',
-                  },
-                  {
-                    id: 'ghost_infiltrator',
-                    name: 'Ghost Infiltrator',
-                    desc: 'Tarnschwarzer Nachteinsatzanzug mit leuchtendem Visier.',
-                    color: '#09090b',
-                    badge: 'Spec-Ops',
-                  },
-                  {
-                    id: 'desert_commando',
-                    name: 'Desert Commando',
-                    desc: 'Sandfarbene Wüstentarnung mit verstärkter ballistischer Weste.',
-                    color: '#c2956e',
-                    badge: 'Militär',
-                  },
-                  {
-                    id: 'cyber_raider',
-                    name: 'Cyber Raider',
-                    desc: 'High-Tech Titanrüstung mit Neon-Energieelementen.',
-                    color: '#0284c7',
-                    badge: 'Cyberpunk',
-                  },
-                  {
-                    id: 'campus_enforcer',
-                    name: 'Campus Security',
-                    desc: 'Dunkelblauer Wachschutz-Suit der Timber School.',
-                    color: '#1e3a8a',
-                    badge: 'Security',
-                  },
-                  {
-                    id: 'lidl_manager',
-                    name: 'Lidl Filialleiter',
-                    desc: 'Legendäre Lidl-Manager-Uniform mit gelber Sicherheitsweste.',
-                    color: '#fff000',
-                    badge: 'Legende',
-                  },
-                ].map((skin) => {
-                  const isEquipped = equippedSoldierSkin === skin.id;
-                  return (
-                    <div
-                      key={skin.id}
-                      className={`relative bg-white/5 border p-4 flex flex-col justify-between transition-all ${
-                        isEquipped
-                          ? 'border-[#2b7fff] bg-[#2b7fff]/10 ring-1 ring-[#2b7fff]'
-                          : 'border-white/10 hover:border-white/30 hover:bg-white/10'
-                      }`}
-                    >
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <div
-                            className="h-2 w-10 rounded-full"
-                            style={{ backgroundColor: skin.color }}
-                          />
-                          <span className="text-[10px] font-mono font-bold text-white/50 uppercase">
-                            {skin.badge}
-                          </span>
-                        </div>
-                        <div className="text-base font-extrabold text-white tracking-wide">
-                          {skin.name}
-                        </div>
-                        <div className="text-[11px] text-white/60 mt-1 line-clamp-2">
-                          {skin.desc}
-                        </div>
-                      </div>
-
-                      <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between gap-2">
-                        <span className="text-xs font-black text-emerald-400">
-                          0€ KOSTENLOS
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setEquippedSoldierSkin(skin.id)}
-                          className={`px-3 py-1.5 text-xs font-black uppercase transition-all cursor-pointer ${
-                            isEquipped
-                              ? 'bg-emerald-600 text-white cursor-default'
-                              : 'bg-[#2b7fff] hover:bg-[#3b8aff] text-white'
-                          }`}
-                        >
-                          {isEquipped ? '✓ Ausgerüstet' : 'Ausrüsten'}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </main>
-      )}
+          </main>
+        );
+      })()}
 
       {topNavTab === 'LEADERBOARD' && (
         <main className="flex-1 flex items-center justify-center pointer-events-auto px-8">

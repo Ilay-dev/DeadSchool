@@ -15,6 +15,8 @@ export interface NetworkTransformPacket {
   rotation: [number, number];
   crouching: boolean;
   sliding?: boolean;
+  isDowned?: boolean;
+  downedHp?: number;
   ads: boolean;
   ridingScooter: boolean;
   weaponClass: WeaponId;
@@ -855,6 +857,8 @@ class LocalMultiplayerManager {
       rotation: this.latestLocalRotation,
       crouching: store.isCrouching,
       sliding: store.isSliding,
+      isDowned: store.isDowned,
+      downedHp: store.downedHp,
       ads: store.isAds,
       ridingScooter: Boolean(store.ridingScooterId),
       weaponClass: store.selectedClass,
@@ -945,6 +949,8 @@ class LocalMultiplayerManager {
       rotation: this.latestLocalRotation,
       crouching: store.isCrouching,
       sliding: store.isSliding,
+      isDowned: store.isDowned,
+      downedHp: store.downedHp,
       ads: store.isAds,
       ridingScooter: Boolean(store.ridingScooterId),
       weaponClass: store.selectedClass,
@@ -1167,7 +1173,7 @@ class LocalMultiplayerManager {
     const store = useGameStore.getState();
 
     if (msg.playerId && msg.playerId === store.playerId) return;
-    if (msg.attackerId && msg.attackerId === store.playerId && msg.type === 'combat:hit') {
+    if (msg.attackerId && msg.attackerId === store.playerId) {
       return;
     }
 
@@ -1262,6 +1268,8 @@ class LocalMultiplayerManager {
             deaths: typeof msg.deaths === 'number' ? msg.deaths : undefined,
             score: typeof msg.score === 'number' ? msg.score : undefined,
             ready: typeof msg.ready === 'boolean' ? msg.ready : undefined,
+            isDowned: Boolean(msg.isDowned),
+            downedHp: typeof msg.downedHp === 'number' ? msg.downedHp : undefined,
           }
         );
 
@@ -1347,6 +1355,20 @@ class LocalMultiplayerManager {
             msg.weaponClass || 'Assault Rifle',
             (msg.weaponId as WeaponId) || 'assault'
           );
+        }
+      }
+    } else if (msg.type === 'combat:revive') {
+      if (msg.targetId === store.playerId) {
+        if (msg.status === 'complete') {
+          store.completeReviveByTeammate();
+        } else if (msg.status === 'start') {
+          store.setBeingRevived(true, msg.reviverId);
+        } else if (msg.status === 'cancel') {
+          store.setBeingRevived(false, null);
+        }
+      } else if (msg.targetId) {
+        if (msg.status === 'complete') {
+          store.setRemotePlayerRevived(msg.targetId);
         }
       }
     } else if (msg.type === 'player:shot' || msg.type === 'combat:shot') {
@@ -1499,6 +1521,22 @@ class LocalMultiplayerManager {
         this.ws.send(jsonStr);
       } catch {}
     }
+  }
+
+  public sendReviveEvent(
+    targetId: string,
+    status: 'start' | 'progress' | 'complete' | 'cancel',
+    progress?: number
+  ) {
+    const store = useGameStore.getState();
+    this.sendReliableEventPacket({
+      type: 'combat:revive',
+      roomCode: store.roomCode || 'WORLD',
+      reviverId: store.playerId,
+      targetId,
+      status,
+      progress,
+    });
   }
 
   public sendHitscanEvent(
