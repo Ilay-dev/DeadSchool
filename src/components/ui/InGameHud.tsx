@@ -77,9 +77,8 @@ function SlidingStickFigureIcon({ active }: { active: boolean }) {
   return (
     <svg
       viewBox="0 0 44 36"
-      className={`w-9 h-8 transition-transform duration-150 ${
-        active ? 'text-[#4da3ff] scale-110' : 'text-white/65'
-      }`}
+      className={`w-9 h-8 transition-transform duration-150 ${active ? 'text-[#4da3ff] scale-110' : 'text-white/65'
+        }`}
       fill="currentColor"
     >
       {/* Head */}
@@ -322,11 +321,10 @@ function EliminatedSpectatingOverlay() {
             onClick={() => {
               if (!cooldownActive) respawnPlayer();
             }}
-            className={`w-80 h-20 border border-white/30 text-white font-extrabold text-[36px] tracking-wide flex items-center justify-center shadow-2xl transition-all ${
-              cooldownActive
+            className={`w-80 h-20 border border-white/30 text-white font-extrabold text-[36px] tracking-wide flex items-center justify-center shadow-2xl transition-all ${cooldownActive
                 ? 'bg-gradient-to-b from-gray-700 to-gray-900 opacity-75 cursor-not-allowed text-white/50'
                 : 'bg-gradient-to-b from-[#4da3ff] to-[#2b7fff] hover:from-[#60adff] hover:to-[#3b8aff] cursor-pointer'
-            }`}
+              }`}
           >
             {cooldownActive ? `RESPAWN IN ${cooldownDisplay}s` : 'RESPAWN'}
           </button>
@@ -1044,11 +1042,10 @@ export function InGameHudOverlay() {
             {(nearbyScooterId || ridingScooterId) && (
               <div
                 data-testid="hud-scooter-prompt"
-                className={`px-4 py-1.5 border-2 text-[13px] font-black uppercase tracking-wide shadow-lg text-center ${
-                  mountedScooter?.isDominic || scooters.find((s) => s.id === nearbyScooterId)?.isDominic
+                className={`px-4 py-1.5 border-2 text-[13px] font-black uppercase tracking-wide shadow-lg text-center ${mountedScooter?.isDominic || scooters.find((s) => s.id === nearbyScooterId)?.isDominic
                     ? 'bg-amber-950/95 border-amber-400 text-amber-300 shadow-[0_0_20px_rgba(251,191,36,0.35)]'
                     : 'bg-[#0050aa]/90 border-[#fff000] text-[#fff000]'
-                }`}
+                  }`}
               >
                 {ridingScooterId ? (
                   <span>
@@ -1073,11 +1070,10 @@ export function InGameHudOverlay() {
               {/* [Q] Vape Smoke Grenade Counter Pill */}
               <div
                 data-testid="hud-vape-counter"
-                className={`px-3 py-1 border text-xs font-extrabold uppercase tracking-wider flex items-center gap-1.5 ${
-                  vapeCount > 0
+                className={`px-3 py-1 border text-xs font-extrabold uppercase tracking-wider flex items-center gap-1.5 ${vapeCount > 0
                     ? 'bg-black/60 border-[#06b6d4] text-[#22d3ee]'
                     : 'bg-black/40 border-white/15 text-white/40'
-                }`}
+                  }`}
               >
                 <span>💨 [Q] Vape:</span>
                 <span className="font-mono-num text-sm">{vapeCount}</span>
@@ -1089,9 +1085,8 @@ export function InGameHudOverlay() {
                 </span>
                 <SlidingStickFigureIcon active={isSliding} />
                 <span
-                  className={`text-[16px] font-extrabold tracking-tighter ${
-                    isSliding ? 'text-[#4da3ff]' : 'text-white/65'
-                  }`}
+                  className={`text-[16px] font-extrabold tracking-tighter ${isSliding ? 'text-[#4da3ff]' : 'text-white/65'
+                    }`}
                 >
                   &gt;&gt;&gt;
                 </span>
@@ -1136,11 +1131,10 @@ export function InGameHudOverlay() {
                   <svg
                     key={b}
                     viewBox="0 0 12 36"
-                    className={`w-3 h-8 rotate-15 transition-opacity ${
-                      ammo > b
+                    className={`w-3 h-8 rotate-15 transition-opacity ${ammo > b
                         ? 'opacity-95 text-[#eab308]'
                         : 'opacity-25 text-white/40'
-                    }`}
+                      }`}
                     fill="currentColor"
                   >
                     <path d="M6 0C3 5 2 11 2 16h8c0-5-1-11-4-16z" />
