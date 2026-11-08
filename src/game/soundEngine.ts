@@ -55,6 +55,10 @@ class SoundEngine {
       this.playLidlScannerSound();
       return;
     }
+    if (weaponId === 'pan') {
+      this.playPanClangSound();
+      return;
+    }
 
     const ctx = this.getContext();
     if (!ctx) return;
@@ -311,7 +315,33 @@ class SoundEngine {
     }
   }
 
-  public playPickupSound(itemType: 'vape_smoke' | 'kong_strong' | 'choco_croissant') {
+  /**
+   * Resonant heavy cast-iron skillet melee hit clang sound!
+   */
+  public playPanClangSound() {
+    const ctx = this.getContext();
+    if (!ctx) return;
+    const vol = this.getVolumeGain();
+    if (vol <= 0.01) return;
+
+    const now = ctx.currentTime;
+    const freqs = [520, 840, 1320, 2150];
+    for (let i = 0; i < freqs.length; i++) {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = i % 2 === 0 ? 'sine' : 'triangle';
+      osc.frequency.setValueAtTime(freqs[i], now);
+      const intensity = (0.28 / (i + 1)) * vol;
+      g.gain.setValueAtTime(intensity, now);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.35 + (3 - i) * 0.08);
+      osc.connect(g);
+      g.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.65);
+    }
+  }
+
+  public playPickupSound(itemType: 'vape_smoke' | 'kong_strong' | 'choco_croissant' | 'street_dart') {
     const ctx = this.getContext();
     if (!ctx) return;
     const vol = this.getVolumeGain();
@@ -321,7 +351,11 @@ class SoundEngine {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
 
-    if (itemType === 'kong_strong') {
+    if (itemType === 'street_dart') {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(320, now);
+      osc.frequency.exponentialRampToValueAtTime(1400, now + 0.35);
+    } else if (itemType === 'kong_strong') {
       osc.type = 'sawtooth';
       osc.frequency.setValueAtTime(440, now);
       osc.frequency.exponentialRampToValueAtTime(1180, now + 0.22);

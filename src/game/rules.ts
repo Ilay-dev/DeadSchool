@@ -4,14 +4,15 @@ export type WeaponId =
   | 'sniper'
   | 'shotgun'
   | 'semi_sniper'
-  | 'lidl_scanner';
+  | 'lidl_scanner'
+  | 'pan';
 
 export type HitZone = 'head' | 'body' | 'legs';
 
 export interface WeaponStats {
   id: WeaponId;
   name: string;
-  rangeLabel: 'Close' | 'Medium' | 'Long' | '4m Stun';
+  rangeLabel: 'Close' | 'Medium' | 'Long' | '4m Stun' | '10m Melee';
   maxRange: number; // maximum effective raycast range in meters
   ammo: number;
   maxAmmo: number;
@@ -19,7 +20,7 @@ export interface WeaponStats {
   reloadTime: number; // in seconds
   fireRateMs: number;
   damage: number;
-  stunDurationMs: number; // > 0 for Lidl Barcode Scanner (10,000ms = 10s)
+  stunDurationMs: number; // > 0 for Lidl Barcode Scanner (4,000ms = 4s)
   headshotMultiplier: number; // 1.5x standard, 2.0x sniper
   bodyMultiplier: number; // 1.0x
   legsMultiplier: number; // 0.75x
@@ -41,7 +42,7 @@ export const WEAPON_CLASSES: Record<WeaponId, WeaponStats> = {
     id: 'smg',
     name: 'SMG',
     rangeLabel: 'Close',
-    maxRange: 95,
+    maxRange: 35.0, // Max 35m range
     ammo: 40,
     maxAmmo: 40,
     health: 100,
@@ -68,7 +69,7 @@ export const WEAPON_CLASSES: Record<WeaponId, WeaponStats> = {
     id: 'assault',
     name: 'Assault Rifle',
     rangeLabel: 'Medium',
-    maxRange: 140,
+    maxRange: 50.0, // Max 50m range
     ammo: 30,
     maxAmmo: 30,
     health: 100,
@@ -95,7 +96,7 @@ export const WEAPON_CLASSES: Record<WeaponId, WeaponStats> = {
     id: 'sniper',
     name: 'Sniper Rifle',
     rangeLabel: 'Long',
-    maxRange: 220,
+    maxRange: 99999.0, // Infinite sniper range (no range limit)
     ammo: 3,
     maxAmmo: 3,
     health: 100,
@@ -183,7 +184,7 @@ export const WEAPON_CLASSES: Record<WeaponId, WeaponStats> = {
     reloadTime: 1.4,
     fireRateMs: 480,
     damage: 0, // 0 damage: Pure freeze stun gun, knocks out target without dealing damage!
-    stunDurationMs: 10000, // Knocks out / stuns target for 10 seconds!
+    stunDurationMs: 4000, // Knocks out / stuns target for 4 seconds!
     headshotMultiplier: 1.0,
     bodyMultiplier: 1.0,
     legsMultiplier: 1.0,
@@ -199,6 +200,33 @@ export const WEAPON_CLASSES: Record<WeaponId, WeaponStats> = {
     secondaryColor: '#fff000', // Lidl Yellow
     accentColor: '#e60014', // Lidl Red
   },
+  pan: {
+    id: 'pan',
+    name: 'Bratpfanne',
+    rangeLabel: '10m Melee',
+    maxRange: 10.0, // Max 10m range
+    ammo: 1,
+    maxAmmo: 1,
+    health: 100,
+    reloadTime: 0.1,
+    fireRateMs: 420,
+    damage: 55, // 55 damage melee hit
+    stunDurationMs: 0,
+    headshotMultiplier: 1.5,
+    bodyMultiplier: 1.0,
+    legsMultiplier: 0.8,
+    recoilPitch: 0.02,
+    recoilYaw: 0.01,
+    recoilKickback: 0.04,
+    adsFov: 78,
+    spread: 0.005,
+    adsSpread: 0.005,
+    pellets: 1,
+    automatic: false,
+    primaryColor: '#1c1e22',
+    secondaryColor: '#363a42',
+    accentColor: '#0f1114',
+  },
 };
 
 export const WEAPON_LIST: WeaponStats[] = [
@@ -208,6 +236,7 @@ export const WEAPON_LIST: WeaponStats[] = [
   WEAPON_CLASSES.shotgun,
   WEAPON_CLASSES.semi_sniper,
   WEAPON_CLASSES.lidl_scanner,
+  WEAPON_CLASSES.pan,
 ];
 
 // Player Physics, Capsule, Slide (Shift), E-Scooter & Pickup Constants
@@ -318,15 +347,28 @@ export interface MapScooterSpawn {
   label: string;
   position: [number, number, number];
   rotationY: number;
+  isDominic?: boolean;
 }
 
-// E-Scooters are rarer on the map (max 2 active at any time across the 5 bike rack locations, lasting 20s each)
-export const MAX_MAP_SCOOTERS = 5;
+// E-Scooters are rarer on the map (max 2 regular active, plus exactly 1 Dominics E-Scooter)
+export const MAX_MAP_SCOOTERS = 6;
 export const MAX_ACTIVE_SCOOTERS = 2;
 export const SCOOTER_DURATION_SEC = 20.0;
 export const SCOOTER_RESPAWN_INTERVAL_SEC = 26.0;
 
+// Dominics E-Scooter (Max 1 on map, 3x speed, 10s battery)
+export const DOMINIC_SCOOTER_ID = 'scooter_dominic';
+export const DOMINIC_SCOOTER_SPEED_MULTIPLIER = 3.0; // 3x normal scooter speed! (41.4 m/s)
+export const DOMINIC_SCOOTER_DURATION_SEC = 10.0; // 10 seconds battery limit
+
 export const CAMPUS_SCOOTER_SPAWNS: MapScooterSpawn[] = [
+  {
+    id: DOMINIC_SCOOTER_ID,
+    label: "Dominics E-Scooter (3x Speed · 10s)",
+    position: [-18.5, 0.15, -4.5],
+    rotationY: 0.6,
+    isDominic: true,
+  },
   {
     id: 'scooter_1',
     label: 'Lidl Supermarkt Parkplatz',
@@ -359,14 +401,24 @@ export const CAMPUS_SCOOTER_SPAWNS: MapScooterSpawn[] = [
   },
 ];
 
-// Ground Pickups: Vape Smoke Grenades (max 5), Kong Strong Energy Cans (max 5), Schoko-Croissants (max 5)
-export type PickupItemType = 'vape_smoke' | 'kong_strong' | 'choco_croissant';
+// Ground Pickups: Vape Smoke Grenades (max 5), Kong Strong (max 5), Schoko-Croissants (max 5), Street Dart (max 5)
+export type PickupItemType =
+  | 'vape_smoke'
+  | 'kong_strong'
+  | 'choco_croissant'
+  | 'street_dart';
 
 export const MAX_MAP_VAPES = 5;
 export const MAX_MAP_KONG_STRONG = 5;
 export const MAX_MAP_CROISSANTS = 5;
+export const MAX_MAP_STREET_DARTS = 5;
+export const STREET_DART_DURATION_MS = 15000; // 15s psychedelic trip
 export const VAPE_SMOKE_RADIUS = 10.5; // Massive expanding smoke ball (covers wide plaza)
 export const VAPE_SMOKE_DURATION_MS = 12000;
+
+// Arthem NPC inside the school (spawns in school hallway / atrium)
+export const ARTHEM_NPC_POSITION: [number, number, number] = [1.2, 0.15, -13.5];
+export const ARTHEM_LETHAL_CHANCE = 0.20; // 20% chance of death, 80% street dart
 
 export const CAMPUS_PICKUP_SPAWN_POINTS: [number, number, number][] = [
   // Lidl Supermarket Sector (West)

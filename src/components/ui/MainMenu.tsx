@@ -17,6 +17,7 @@ export function TopBrandHeader() {
   const setTopNavTab = useGameStore((s) => s.setTopNavTab);
   const isLoggedIn = useGameStore((s) => s.isLoggedIn);
   const playerName = useGameStore((s) => s.playerName);
+  const setPlayerName = useGameStore((s) => s.setPlayerName);
   const toggleLogin = useGameStore((s) => s.toggleLogin);
   const graphicsPreset = useGameStore((s) => s.settings.graphicsPreset);
   const updateSettings = useGameStore((s) => s.updateSettings);
@@ -53,8 +54,23 @@ export function TopBrandHeader() {
           </div>
         </div>
 
-        {/* Top-Right Quick Graphics Preset Toggle */}
-        <div className="flex items-center gap-2.5">
+        {/* Top-Right Player Name Input & Quick Graphics Preset Toggle */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 bg-black/70 border border-white/20 px-3 py-1.5 shadow-inner">
+            <span className="text-white/50 text-[11px] font-black uppercase tracking-wider">
+              NAME:
+            </span>
+            <input
+              type="text"
+              data-testid="player-name-input"
+              value={playerName}
+              maxLength={16}
+              onChange={(e) => setPlayerName(e.target.value.trim() || 'Player')}
+              placeholder="Spielername"
+              className="bg-transparent text-emerald-400 font-extrabold text-[14px] focus:outline-none w-28 text-left"
+            />
+          </div>
+
           <button
             type="button"
             data-testid="quick-graphics-preset-toggle"

@@ -33,15 +33,20 @@ import {
   type SpawnPoint,
 } from './rules';
 
-test('WEAPON_CLASSES includes balanced firearms and Lidl Barcode Scanner (4m range, 10s stun)', () => {
+test('WEAPON_CLASSES includes balanced firearms and Lidl Barcode Scanner (4m range, 4s stun)', () => {
   assert.equal(WEAPON_CLASSES.smg.ammo, 40);
+  assert.equal(WEAPON_CLASSES.smg.maxRange, 35.0);
   assert.equal(WEAPON_CLASSES.assault.ammo, 30);
+  assert.equal(WEAPON_CLASSES.assault.maxRange, 50.0);
   assert.equal(WEAPON_CLASSES.sniper.ammo, 3);
+  assert.equal(WEAPON_CLASSES.sniper.maxRange, 99999.0);
   assert.equal(WEAPON_CLASSES.shotgun.ammo, 2);
   assert.equal(WEAPON_CLASSES.semi_sniper.ammo, 8);
+  assert.equal(WEAPON_CLASSES.pan.maxRange, 10.0);
+  assert.equal(WEAPON_CLASSES.pan.damage, 55);
 
   assert.equal(WEAPON_CLASSES.lidl_scanner.maxRange, 4.0);
-  assert.equal(WEAPON_CLASSES.lidl_scanner.stunDurationMs, 10000);
+  assert.equal(WEAPON_CLASSES.lidl_scanner.stunDurationMs, 4000);
   assert.equal(WEAPON_CLASSES.lidl_scanner.damage, 0);
   assert.equal(calculateHitDamage('lidl_scanner', 3.5, 'body'), 0);
   assert.equal(calculateHitDamage('lidl_scanner', 4.5, 'body'), 0);
@@ -210,9 +215,9 @@ test('DBNO and Revive rules and constants are correctly defined', () => {
 
 test('selectSafestSpawnPoint maximally distributes spawns based on active player positions', () => {
   const spawns: SpawnPoint[] = [
-    { name: 'West_Spawn', position: [-40, 0, 0], rotationY: 0, team: 'alpha' },
-    { name: 'Center_Spawn', position: [0, 0, 0], rotationY: 0, team: 'alpha' },
-    { name: 'East_Spawn', position: [40, 0, 0], rotationY: 0, team: 'alpha' },
+    { name: 'West_Spawn', position: [-40, 0, 0], rotationY: 0 },
+    { name: 'Center_Spawn', position: [0, 0, 0], rotationY: 0 },
+    { name: 'East_Spawn', position: [40, 0, 0], rotationY: 0 },
   ];
   // With enemy at West_Spawn (-40, 0, 0), safest spawn should be East_Spawn (+40, 0, 0)
   const chosen = selectSafestSpawnPoint(spawns, [[-40, 0, 0]]);

@@ -471,7 +471,10 @@ export function InGameHudOverlay() {
   const matchTimeRemaining = useGameStore((s) => s.matchTimeRemaining);
   const damageFlashAlpha = useGameStore((s) => s.damageFlashAlpha);
   const damageVignetteAlpha = useGameStore((s) => s.damageVignetteAlpha);
-  const droneIntroTimer = useGameStore((s) => s.droneIntroTimer);
+  const matchStartCountdownSec = useGameStore((s) => s.matchStartCountdownSec);
+  const streetDartUntil = useGameStore((s) => s.streetDartUntil);
+  const vapeChargePower = useGameStore((s) => s.vapeChargePower);
+  const isNearArthem = useGameStore((s) => s.isNearArthem);
   const isDowned = useGameStore((s) => s.isDowned);
   const downedHp = useGameStore((s) => s.downedHp);
   const maxDownedHp = useGameStore((s) => s.maxDownedHp);
@@ -528,47 +531,71 @@ export function InGameHudOverlay() {
         />
       )}
 
-      {/* Drone Recon Orbital Drop Intro HUD Overlay */}
-      {droneIntroTimer > 0 && !isEliminated && (
+      {/* 5-Second Match Start Countdown Overlay */}
+      {matchStartCountdownSec > 0 && !isEliminated && (
         <div
-          data-testid="hud-drone-intro-overlay"
-          className="fixed inset-0 z-35 pointer-events-none flex flex-col justify-between p-8"
+          data-testid="hud-match-countdown-overlay"
+          className="fixed inset-0 z-40 pointer-events-none flex flex-col items-center justify-center bg-black/45 backdrop-blur-[2px]"
         >
-          {/* Top satellite status bar */}
-          <div className="flex justify-between items-start text-emerald-400 font-mono text-xs tracking-widest uppercase">
-            <div className="bg-black/80 px-4 py-2 border border-emerald-500/40 shadow-lg">
-              <div className="font-bold text-sm text-emerald-300">[DRONE RECON // ORBITAL DEPLOYMENT]</div>
-              <div className="text-white/70 mt-0.5">LAT 52.5200° N · LON 13.4050° E · ALT {Math.round(droneIntroTimer * 25)}m</div>
+          <div className="bg-slate-950/90 border-2 border-emerald-500/80 px-10 py-7 rounded-2xl shadow-[0_0_50px_rgba(16,185,129,0.35)] text-center flex flex-col items-center">
+            <div className="text-xs uppercase tracking-[0.3em] font-mono text-emerald-400 font-bold mb-2">
+              VORBEREITUNG · MATCH STARTET IN
             </div>
-            <div className="bg-black/80 px-4 py-2 border border-emerald-500/40 text-right animate-pulse text-emerald-400 font-bold shadow-lg">
-              ● LIVE SATELLITE FEED
+            <div className="text-7xl font-black font-mono-num text-white tracking-wider animate-bounce">
+              {Math.ceil(matchStartCountdownSec)}
             </div>
-          </div>
-
-          {/* Center Tactical Targeting Bracket */}
-          <div className="fixed inset-0 flex items-center justify-center pointer-events-none">
-            <div className="w-64 h-64 border border-emerald-400/30 rounded-lg relative flex flex-col items-center justify-center shadow-[0_0_30px_rgba(16,185,129,0.15)]">
-              <div className="w-5 h-5 border-t-2 border-l-2 border-emerald-400 absolute top-0 left-0" />
-              <div className="w-5 h-5 border-t-2 border-r-2 border-emerald-400 absolute top-0 right-0" />
-              <div className="w-5 h-5 border-b-2 border-l-2 border-emerald-400 absolute bottom-0 left-0" />
-              <div className="w-5 h-5 border-b-2 border-r-2 border-emerald-400 absolute bottom-0 right-0" />
-              <div className="text-emerald-400 text-xs font-mono font-bold tracking-widest uppercase animate-pulse">
-                INFILTRATING CAMPUS...
-              </div>
-              <div className="text-[11px] font-mono text-emerald-300/80 mt-1">
-                LOCKING FIRST PERSON OPTICS
-              </div>
+            <div className="text-xs text-white/60 mt-3 font-semibold">
+              Wähle deine Waffe und bring dich in Position!
             </div>
           </div>
+        </div>
+      )}
 
-          {/* Bottom altitude / telemetry bar */}
-          <div className="flex justify-between items-end text-emerald-400 font-mono text-xs">
-            <div className="bg-black/80 px-4 py-2 border border-emerald-500/40 shadow-lg">
-              STATUS: APPROACHING CAMPUS
+      {/* Street Dart Psychedelic Trip Fullscreen FX */}
+      {streetDartUntil > Date.now() && !isEliminated && (
+        <div
+          data-testid="hud-street-dart-fx"
+          className="fixed inset-0 pointer-events-none z-30 mix-blend-color animate-pulse"
+          style={{
+            background:
+              'radial-gradient(circle, rgba(236,72,153,0.35) 0%, rgba(168,85,247,0.45) 45%, rgba(6,182,212,0.55) 100%)',
+            filter: 'hue-rotate(180deg) saturate(220%)',
+          }}
+        >
+          <div className="absolute top-8 left-1/2 -translate-x-1/2 bg-black/85 border-2 border-pink-500 px-6 py-2 rounded-xl text-center shadow-[0_0_30px_rgba(236,72,153,0.5)]">
+            <div className="text-pink-400 font-black tracking-widest text-lg animate-pulse">
+              💉 STREET DART TRIP AKTIV ({Math.ceil((streetDartUntil - Date.now()) / 1000)}s)
             </div>
-            <div className="bg-black/80 px-4 py-2 border border-emerald-500/40 font-mono-num font-bold shadow-lg">
-              T-{(droneIntroTimer).toFixed(1)}s
-            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Charged Vape Smoke Grenade Throw Meter */}
+      {vapeChargePower > 0 && !isEliminated && (
+        <div className="fixed left-1/2 bottom-[28%] -translate-x-1/2 z-30 flex flex-col items-center bg-black/85 border border-cyan-400/80 px-6 py-3 rounded-xl shadow-[0_0_25px_rgba(6,182,212,0.4)]">
+          <div className="text-xs uppercase font-mono tracking-widest text-cyan-300 font-bold mb-1.5 flex items-center gap-2">
+            <span>💨</span> WURFWEITE AUFLADEN [Q]
+          </div>
+          <div className="w-56 h-3 bg-slate-800 rounded-full overflow-hidden border border-cyan-500/40 p-0.5">
+            <div
+              className="h-full bg-gradient-to-r from-cyan-400 to-pink-500 rounded-full transition-all duration-75"
+              style={{ width: `${Math.round(vapeChargePower * 100)}%` }}
+            />
+          </div>
+          <div className="text-[11px] text-white/70 font-mono mt-1">
+            Kraft: {Math.round(vapeChargePower * 100)}% · Loslassen zum Werfen
+          </div>
+        </div>
+      )}
+
+      {/* Arthem Proximity Prompt */}
+      {isNearArthem && !isEliminated && !isDowned && (
+        <div className="fixed left-1/2 top-[26%] -translate-x-1/2 z-30 bg-slate-950/95 border-2 border-pink-500 px-6 py-3 rounded-xl text-center shadow-[0_0_30px_rgba(236,72,153,0.4)]">
+          <div className="text-sm font-black text-pink-400 uppercase tracking-wide">
+            👤 [E] MIT ARTHEM SPRECHEN
+          </div>
+          <div className="text-xs text-white/80 mt-0.5">
+            Street Dart Dealer (80% Chance auf Street Dart, 20% Lebensgefahr!)
           </div>
         </div>
       )}
@@ -967,18 +994,27 @@ export function InGameHudOverlay() {
             {(nearbyScooterId || ridingScooterId) && (
               <div
                 data-testid="hud-scooter-prompt"
-                className="px-4 py-1.5 bg-[#0050aa]/90 border-2 border-[#fff000] text-[#fff000] text-[13px] font-black uppercase tracking-wide shadow-lg text-center"
+                className={`px-4 py-1.5 border-2 text-[13px] font-black uppercase tracking-wide shadow-lg text-center ${
+                  mountedScooter?.isDominic || scooters.find((s) => s.id === nearbyScooterId)?.isDominic
+                    ? 'bg-amber-950/95 border-amber-400 text-amber-300 shadow-[0_0_20px_rgba(251,191,36,0.35)]'
+                    : 'bg-[#0050aa]/90 border-[#fff000] text-[#fff000]'
+                }`}
               >
                 {ridingScooterId ? (
                   <span>
-                    🛴 E-SCOOTER ({scooterBatterySec.toFixed(1)}s / 20s) —{' '}
+                    {mountedScooter?.isDominic ? '⚡ DOMINICS E-SCOOTER (3x SPEED)' : '🛴 E-SCOOTER'} (
+                    {scooterBatterySec.toFixed(1)}s / {mountedScooter?.isDominic ? '10s' : '20s'}) —{' '}
                     {selectedClass === 'lidl_scanner'
                       ? 'LIDL-SCANNER BEREIT!'
                       : 'SCHIESSEN GESPERRT (NUR LIDL-SCANNER)'}{' '}
                     — [E] Absteigen
                   </span>
                 ) : (
-                  <span>🛴 [E] Drücken um E-Scooter zu fahren (20s Akku)</span>
+                  <span>
+                    {scooters.find((s) => s.id === nearbyScooterId)?.isDominic
+                      ? '⚡ [E] Dominics E-Scooter fahren (3x SPEED · 10s Akku)'
+                      : '🛴 [E] Drücken um E-Scooter zu fahren (20s Akku)'}
+                  </span>
                 )}
               </div>
             )}

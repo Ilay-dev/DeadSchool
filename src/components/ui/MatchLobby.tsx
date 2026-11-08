@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useGameStore } from '../../store/useGameStore';
 import { MAPS, type GameModeId } from '../../game/rules';
 import { TopBrandHeader, LeftEventChallengeSidebar } from './MainMenu';
@@ -28,6 +28,23 @@ export function MatchLobbyScreen() {
   const remotePlayers = useGameStore((s) => s.remotePlayers);
   const roomCode = useGameStore((s) => s.roomCode);
   const setRoomCode = useGameStore((s) => s.setRoomCode);
+  const lobbyCountdownSec = useGameStore((s) => s.lobbyCountdownSec);
+  const setLobbyCountdown = useGameStore((s) => s.setLobbyCountdown);
+  const selectClassAndDeploy = useGameStore((s) => s.selectClassAndDeploy);
+  const selectedClass = useGameStore((s) => s.selectedClass);
+
+  useEffect(() => {
+    if (lobbyCountdownSec === null) return;
+    if (lobbyCountdownSec <= 0) {
+      setLobbyCountdown(null);
+      selectClassAndDeploy(selectedClass);
+      return;
+    }
+    const timer = setInterval(() => {
+      setLobbyCountdown(Math.max(0, (lobbyCountdownSec ?? 0) - 0.25));
+    }, 250);
+    return () => clearInterval(timer);
+  }, [lobbyCountdownSec, setLobbyCountdown, selectClassAndDeploy, selectedClass]);
 
   const [copiedBanner, setCopiedBanner] = useState(false);
   const [joinCodeDraft, setJoinCodeDraft] = useState('');
@@ -77,10 +94,31 @@ export function MatchLobbyScreen() {
     setJoinCodeDraft('');
   };
 
+  const allPlayersInRoom = isFfa
+    ? allFfaPlayers
+    : [...alphaPlayers, ...bravoPlayers];
+  const allOtherPlayersReady = allPlayersInRoom
+    .filter((p) => p.id !== 'local')
+    .every((p) => p.ready);
+
   const handleReadyClick = () => {
     toggleReady();
-    multiplayerManager.sendLobbySync();
-    setScreen('select_class');
+    const willBeReady = !isReady;
+
+    if (isPublicRoom) {
+      multiplayerManager.sendLobbySync();
+      setScreen('select_class');
+    } else {
+      // In private rooms, all connected players must be ready!
+      if (willBeReady && (allPlayersInRoom.length === 1 || allOtherPlayersReady)) {
+        // Start 5-second synchronized countdown
+        setLobbyCountdown(5.0);
+        multiplayerManager.sendLobbySync();
+      } else {
+        setLobbyCountdown(null);
+        multiplayerManager.sendLobbySync();
+      }
+    }
   };
 
   return (
@@ -320,14 +358,35 @@ export function MatchLobbyScreen() {
             </button>
           </div>
 
+          {/* 5-Second Lobby Ready Countdown Banner */}
+          {lobbyCountdownSec !== null && lobbyCountdownSec > 0 && (
+            <div className="w-full bg-emerald-950/90 border-2 border-emerald-400 py-3 px-6 text-center shadow-[0_0_30px_rgba(16,185,129,0.4)] animate-pulse rounded-lg">
+              <div className="text-emerald-400 font-black text-xl tracking-wider">
+                ALLE SPIELER BEREIT! MATCH STARTET IN {Math.ceil(lobbyCountdownSec)}s...
+              </div>
+            </div>
+          )}
+
           {/* READY & Public / Leave Buttons */}
           <div className="flex flex-col items-center gap-2">
             <button
               type="button"
               onClick={handleReadyClick}
-              className="w-76 h-18 bg-gradient-to-b from-[#3d8bff] to-[#2364c7] hover:from-[#4d97ff] hover:to-[#2b72de] border border-white/25 text-white font-extrabold text-[38px] tracking-wide flex items-center justify-center shadow-lg cursor-pointer"
+              className={`w-88 h-18 border border-white/25 text-white font-extrabold text-[28px] tracking-wide flex items-center justify-center shadow-lg cursor-pointer ${
+                lobbyCountdownSec !== null && lobbyCountdownSec > 0
+                  ? 'bg-gradient-to-b from-emerald-500 to-emerald-700 animate-pulse text-white'
+                  : isReady
+                    ? 'bg-gradient-to-b from-emerald-600 to-emerald-800 text-emerald-100'
+                    : 'bg-gradient-to-b from-[#3d8bff] to-[#2364c7] hover:from-[#4d97ff] hover:to-[#2b72de]'
+              }`}
             >
-              READY
+              {lobbyCountdownSec !== null && lobbyCountdownSec > 0
+                ? `STARTET IN ${Math.ceil(lobbyCountdownSec)}s`
+                : !isPublicRoom
+                  ? isReady
+                    ? 'BEREIT (WARTE...)'
+                    : 'READY UP'
+                  : 'READY'}
             </button>
 
             <div className="flex items-center gap-2.5">

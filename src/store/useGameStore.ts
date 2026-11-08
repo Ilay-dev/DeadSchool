@@ -18,6 +18,13 @@ import {
   REVIVE_DURATION_SEC,
   REVIVED_HP,
   RESPAWN_COOLDOWN_SEC,
+  DOMINIC_SCOOTER_ID,
+  DOMINIC_SCOOTER_DURATION_SEC,
+  DOMINIC_SCOOTER_SPEED_MULTIPLIER,
+  MAX_MAP_STREET_DARTS,
+  STREET_DART_DURATION_MS,
+  ARTHEM_NPC_POSITION,
+  ARTHEM_LETHAL_CHANCE,
   canFireWeaponOnScooter,
   stepThrownVapeProjectile,
   selectSafestSpawnPoint,
@@ -157,12 +164,13 @@ export interface MapScooterState {
   position: [number, number, number];
   rotationY: number;
   mountedByPlayerId: string | null;
-  batteryRemainingSec: number; // 20s ride duration before expiring
+  batteryRemainingSec: number; // 20s ride duration (10s for Dominic's scooter)
+  isDominic?: boolean;
 }
 
 export interface GroundPickupItem {
   id: string;
-  type: PickupItemType; // 'vape_smoke' | 'kong_strong' | 'choco_croissant'
+  type: PickupItemType; // 'vape_smoke' | 'kong_strong' | 'choco_croissant' | 'street_dart'
   position: [number, number, number];
   rotationY: number;
 }
@@ -239,12 +247,27 @@ export interface GameStoreState {
   // Player Profile & Party
   playerId: string;
   playerName: string;
+  setPlayerName: (name: string) => void;
   isLoggedIn: boolean;
   partySlots: (string | null)[];
   onlinePlayersCount: number;
   localScore: number;
   localKills: number;
   localDeaths: number;
+  hasSpawnedInMatch: boolean;
+  matchStartCountdownSec: number;
+
+  // Street Dart & Arthem NPC State
+  streetDartUntil: number;
+  hasTalkedToArthemThisRound: boolean;
+  isNearArthem: boolean;
+  setIsNearArthem: (near: boolean) => void;
+  interactWithArthem: () => { success: boolean; lethal: boolean };
+
+  // Vape Charge & Trajectory Arc State
+  vapeChargePower: number;
+  vapeTrajectoryPoints: [number, number, number][];
+  setVapeCharge: (power: number, points: [number, number, number][]) => void;
 
   // Match Lobby & LAN / P2P Room Code Networking
   roomCode: string;
@@ -259,6 +282,9 @@ export interface GameStoreState {
   isSpectating: boolean;
   peerId: string;
   connectedPeersCount: number;
+  lobbyCountdownSec: number | null;
+  setLobbyCountdown: (sec: number | null) => void;
+  setMatchTimeRemaining: (sec: number) => void;
 
   // Map Parsed Spawns & Respawn Signal
   spawnPoints: SpawnPoint[];
@@ -349,7 +375,8 @@ export interface GameStoreState {
   throwVapeSmokeGrenade: (
     origin: [number, number, number],
     direction: [number, number, number],
-    groundY?: number
+    groundY?: number,
+    force?: number
   ) => boolean;
 
   // Lobby & Mode Actions
@@ -502,15 +529,30 @@ const DEFAULT_SETTINGS: GameSettings = {
 };
 
 function createInitialScooters(): MapScooterState[] {
-  // E-Scooters are rarer: only MAX_ACTIVE_SCOOTERS (2) spawn initially, each lasting 20s
-  return CAMPUS_SCOOTER_SPAWNS.slice(0, MAX_ACTIVE_SCOOTERS).map((s) => ({
-    id: s.id,
-    label: s.label,
-    position: [...s.position] as [number, number, number],
-    rotationY: s.rotationY,
-    mountedByPlayerId: null,
-    batteryRemainingSec: SCOOTER_DURATION_SEC,
-  }));
+  // Dominics E-Scooter (10s battery, 3x speed) + up to MAX_ACTIVE_SCOOTERS (2) regular scooters
+  const dominicSpawn = CAMPUS_SCOOTER_SPAWNS.find((s) => s.isDominic) || CAMPUS_SCOOTER_SPAWNS[0];
+  const regularSpawns = CAMPUS_SCOOTER_SPAWNS.filter((s) => !s.isDominic).slice(0, MAX_ACTIVE_SCOOTERS);
+
+  return [
+    {
+      id: dominicSpawn.id,
+      label: dominicSpawn.label,
+      position: [...dominicSpawn.position] as [number, number, number],
+      rotationY: dominicSpawn.rotationY,
+      mountedByPlayerId: null,
+      batteryRemainingSec: DOMINIC_SCOOTER_DURATION_SEC,
+      isDominic: true,
+    },
+    ...regularSpawns.map((s) => ({
+      id: s.id,
+      label: s.label,
+      position: [...s.position] as [number, number, number],
+      rotationY: s.rotationY,
+      mountedByPlayerId: null,
+      batteryRemainingSec: SCOOTER_DURATION_SEC,
+      isDominic: false,
+    })),
+  ];
 }
 
 function createInitialGroundPickups(): GroundPickupItem[] {
@@ -518,9 +560,11 @@ function createInitialGroundPickups(): GroundPickupItem[] {
     'vape_smoke',
     'kong_strong',
     'choco_croissant',
+    'street_dart',
     'vape_smoke',
     'kong_strong',
     'choco_croissant',
+    'street_dart',
     'vape_smoke',
     'kong_strong',
     'choco_croissant',
@@ -684,13 +728,25 @@ export const useGameStore = create<GameStoreState>()(
       damageIndicators: [],
 
       playerId: `p_${Math.random().toString(36).slice(2, 8)}`,
-      playerName: `Player_${Math.floor(100 + Math.random() * 899)}`,
+      playerName:
+        typeof window !== 'undefined' && localStorage.getItem('deadschool_player_name')
+          ? localStorage.getItem('deadschool_player_name') || 'Player_1'
+          : `Player_${Math.floor(100 + Math.random() * 899)}`,
       isLoggedIn: false,
       partySlots: [null, null, null],
       onlinePlayersCount: 443,
       localScore: 0,
       localKills: 0,
       localDeaths: 0,
+      hasSpawnedInMatch: false,
+      matchStartCountdownSec: 5.0,
+      streetDartUntil: 0,
+      hasTalkedToArthemThisRound: false,
+      isNearArthem: false,
+      setIsNearArthem: (near) => set({ isNearArthem: near }),
+      vapeChargePower: 0,
+      vapeTrajectoryPoints: [],
+      lobbyCountdownSec: null,
 
       roomCode: 'WORLD',
       lanIp: '192.168.1.100',
@@ -742,7 +798,7 @@ export const useGameStore = create<GameStoreState>()(
       hitmarkerHeadshot: false,
       damageFlashAlpha: 0,
       damageVignetteAlpha: 0,
-      droneIntroTimer: 1.8,
+      droneIntroTimer: 0,
 
       // Fortnite-Style Downed (DBNO) & Revive State
       isDowned: false,
@@ -795,6 +851,49 @@ export const useGameStore = create<GameStoreState>()(
       chatInputOpen: false,
 
       settings: DEFAULT_SETTINGS,
+
+      setPlayerName: (name) => {
+        const clean = name.trim().slice(0, 16) || 'Player_1';
+        try {
+          localStorage.setItem('deadschool_player_name', clean);
+        } catch {}
+        set({ playerName: clean });
+      },
+
+      setLobbyCountdown: (sec) => set({ lobbyCountdownSec: sec }),
+
+      setMatchTimeRemaining: (sec) => set({ matchTimeRemaining: sec }),
+
+      setVapeCharge: (power, points) =>
+        set({ vapeChargePower: power, vapeTrajectoryPoints: points }),
+
+      interactWithArthem: () => {
+        const state = get();
+        if (state.hasTalkedToArthemThisRound || state.isEliminated || state.isDowned) {
+          return { success: false, lethal: false };
+        }
+        const isLethal = Math.random() < ARTHEM_LETHAL_CHANCE;
+        if (isLethal) {
+          state.applyPlayerDamage(999, {
+            name: 'Arthem (Tödliche Dosis)',
+            team: state.playerTeam === 'alpha' ? 'bravo' : 'alpha',
+            hp: 100,
+            maxHp: 100,
+            weaponClass: 'assault',
+          });
+          set({
+            hasTalkedToArthemThisRound: true,
+          });
+          return { success: false, lethal: true };
+        }
+
+        const now = Date.now();
+        set({
+          hasTalkedToArthemThisRound: true,
+          streetDartUntil: now + STREET_DART_DURATION_MS,
+        });
+        return { success: true, lethal: false };
+      },
 
       setScreen: (screen) => {
         syncBodyDataset(screen);
@@ -954,6 +1053,7 @@ export const useGameStore = create<GameStoreState>()(
 
         let nextVapeCount = state.vapeCount;
         let nextKongStrongUntil = state.kongStrongUntil;
+        let nextStreetDartUntil = state.streetDartUntil;
         let nextHp = state.hp;
 
         for (const item of state.mapPickups) {
@@ -970,6 +1070,8 @@ export const useGameStore = create<GameStoreState>()(
               nextKongStrongUntil = Date.now() + PLAYER_DIMENSIONS.kongStrongDurationMs;
             } else if (item.type === 'choco_croissant') {
               nextHp = state.maxHp;
+            } else if (item.type === 'street_dart') {
+              nextStreetDartUntil = Date.now() + STREET_DART_DURATION_MS;
             }
           } else {
             remainingPickups.push(item);
@@ -981,6 +1083,7 @@ export const useGameStore = create<GameStoreState>()(
             mapPickups: remainingPickups,
             vapeCount: nextVapeCount,
             kongStrongUntil: nextKongStrongUntil,
+            streetDartUntil: nextStreetDartUntil,
             hp: nextHp,
           });
         }
@@ -988,7 +1091,7 @@ export const useGameStore = create<GameStoreState>()(
         return collectedTypes;
       },
 
-      throwVapeSmokeGrenade: (origin, direction, groundY = 0.15) => {
+      throwVapeSmokeGrenade: (origin, direction, groundY = 0.15, force = 14.5) => {
         const state = get();
         if (
           state.screen !== 'playing' ||
@@ -1004,10 +1107,13 @@ export const useGameStore = create<GameStoreState>()(
         const ny = direction[1] / dirLen;
         const nz = direction[2] / dirLen;
 
+        const thrownSpeed = Math.max(8, Math.min(32, force));
+        const upSpeed = Math.max(3.0, thrownSpeed * 0.28);
+
         const thrown: ThrownVapeState = {
           id: `vape_proj_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
           position: [origin[0] + nx * 0.45, origin[1], origin[2] + nz * 0.45],
-          velocity: [nx * 14.5, ny * 14.5 + 4.2, nz * 14.5],
+          velocity: [nx * thrownSpeed, ny * thrownSpeed + upSpeed, nz * thrownSpeed],
           groundY: Math.max(0.12, groundY),
         };
 
@@ -1133,6 +1239,7 @@ export const useGameStore = create<GameStoreState>()(
         syncBodyDataset('playing');
 
         const wasAliveInMatch =
+          state.hasSpawnedInMatch &&
           !state.isEliminated &&
           !state.isDowned &&
           (state.screen === 'playing' ||
@@ -1140,7 +1247,7 @@ export const useGameStore = create<GameStoreState>()(
             state.screen === 'select_class');
 
         if (wasAliveInMatch) {
-          // Keep current position - DO NOT RESPAWN!
+          // Keep current position - DO NOT RESPAWN / DO NOT TELEPORT!
           set((s) => ({
             selectedClass: weaponId,
             hp: Math.min(s.hp, stats.health),
@@ -1174,7 +1281,10 @@ export const useGameStore = create<GameStoreState>()(
           downedHp: DOWNED_MAX_HP,
           maxDownedHp: DOWNED_MAX_HP,
           respawnCooldownSec: 0,
-          droneIntroTimer: 1.8,
+          matchStartCountdownSec: 5.0,
+          hasSpawnedInMatch: true,
+          droneIntroTimer: 0,
+          hasTalkedToArthemThisRound: false,
           eliminatedBy: null,
           activeSpawnPoint: safestSpawn,
           respawnNonce: s.respawnNonce + 1,
@@ -1397,7 +1507,9 @@ export const useGameStore = create<GameStoreState>()(
           damageFlashAlpha: 0,
           damageVignetteAlpha: 0,
           respawnCooldownSec: 0,
-          droneIntroTimer: 1.8,
+          matchStartCountdownSec: 5.0,
+          hasTalkedToArthemThisRound: false,
+          droneIntroTimer: 0,
           activeSpawnPoint: safestSpawn,
           respawnNonce: s.respawnNonce + 1,
         }));
@@ -1514,8 +1626,11 @@ export const useGameStore = create<GameStoreState>()(
             nextHp = Math.min(state.maxHp, state.hp + dt * 1.0);
           }
 
+          // Match start 5-second countdown
+          const nextMatchStartCountdown = Math.max(0, state.matchStartCountdownSec - dt);
+
           // Drone camera drop intro timer
-          const nextDroneTimer = Math.max(0, state.droneIntroTimer - dt);
+          const nextDroneTimer = 0;
 
           // Damage vignette alpha fade
           const nextVignetteAlpha = Math.max(0, state.damageVignetteAlpha - dt * 0.9);
@@ -1578,8 +1693,9 @@ export const useGameStore = create<GameStoreState>()(
               (sp) => !nextScooters.some((sc) => sc.id === sp.id)
             );
             if (unusedSpawns.length > 0) {
-              const chosen =
-                unusedSpawns[Math.floor(Math.random() * unusedSpawns.length)];
+              // Prioritize Dominics E-Scooter if not currently on map!
+              const dominicUnused = unusedSpawns.find((sp) => sp.isDominic);
+              const chosen = dominicUnused || unusedSpawns[Math.floor(Math.random() * unusedSpawns.length)];
               nextScooters = [
                 ...nextScooters,
                 {
@@ -1588,7 +1704,8 @@ export const useGameStore = create<GameStoreState>()(
                   position: [...chosen.position] as [number, number, number],
                   rotationY: chosen.rotationY,
                   mountedByPlayerId: null,
-                  batteryRemainingSec: SCOOTER_DURATION_SEC,
+                  batteryRemainingSec: chosen.isDominic ? DOMINIC_SCOOTER_DURATION_SEC : SCOOTER_DURATION_SEC,
+                  isDominic: chosen.isDominic,
                 },
               ];
             }
@@ -1629,7 +1746,7 @@ export const useGameStore = create<GameStoreState>()(
             nextThrownVapes = updatedProjectiles;
           }
 
-          // 3. Periodically Spawn Ground Pickups (Vapes max 5, Kong Strong max 5, Schoko-Croissants max 5)
+          // 3. Periodically Spawn Ground Pickups (Vapes max 5, Kong Strong max 5, Schoko-Croissants max 5, Street Darts max 5)
           let nextPickupTimer = state.pickupSpawnTimerSec + dt;
           let nextPickups = state.mapPickups;
           if (nextPickupTimer >= 6.5) {
@@ -1639,11 +1756,13 @@ export const useGameStore = create<GameStoreState>()(
             const croissantOnMap = nextPickups.filter(
               (p) => p.type === 'choco_croissant'
             ).length;
+            const dartOnMap = nextPickups.filter((p) => p.type === 'street_dart').length;
 
             const candidateTypes: PickupItemType[] = [];
             if (vapeOnMap < MAX_MAP_VAPES) candidateTypes.push('vape_smoke');
             if (kongOnMap < MAX_MAP_KONG_STRONG) candidateTypes.push('kong_strong');
             if (croissantOnMap < MAX_MAP_CROISSANTS) candidateTypes.push('choco_croissant');
+            if (dartOnMap < MAX_MAP_STREET_DARTS) candidateTypes.push('street_dart');
 
             if (candidateTypes.length > 0) {
               const freePoints = CAMPUS_PICKUP_SPAWN_POINTS.filter(
@@ -1691,6 +1810,7 @@ export const useGameStore = create<GameStoreState>()(
             pickupSpawnTimerSec: nextPickupTimer,
             damageIndicators: nextDamageIndicators,
             droneIntroTimer: nextDroneTimer,
+            matchStartCountdownSec: nextMatchStartCountdown,
             damageVignetteAlpha: nextVignetteAlpha,
             respawnCooldownSec: nextRespawnCooldown,
             isDowned: nextIsDowned,

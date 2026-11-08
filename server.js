@@ -56,6 +56,17 @@ function broadcastToRoom(wss, roomCode, payload, excludeWs) {
     }
   });
 }
+function getRoomPayload(room) {
+  const elapsedSec = (Date.now() - (room.matchStartTimestamp || Date.now())) / 1e3;
+  const matchTimeRemaining = Math.max(
+    0,
+    Math.round((room.matchDurationSec || 300) - elapsedSec)
+  );
+  return {
+    ...room,
+    matchTimeRemaining
+  };
+}
 function removeClientFromCurrentRoom(wss, ws) {
   const info = clientRoomMap.get(ws);
   if (!info) return;
@@ -75,7 +86,7 @@ function removeClientFromCurrentRoom(wss, ws) {
     }
     broadcastToRoom(wss, info.roomCode, {
       type: "room:state",
-      room,
+      room: getRoomPayload(room),
       lanIp: getLocalLanIp()
     });
   }
@@ -144,6 +155,8 @@ async function startServer() {
               bravoFlagCarrier: null,
               alphaFlagDroppedPos: null,
               bravoFlagDroppedPos: null,
+              matchStartTimestamp: Date.now(),
+              matchDurationSec: 300,
               players: {}
             };
             rooms.set(roomCode, room);
@@ -184,14 +197,14 @@ async function startServer() {
             JSON.stringify({
               type: "room:state",
               roomCode,
-              room,
+              room: getRoomPayload(room),
               lanIp: getLocalLanIp()
             })
           );
           broadcastToRoom(
             wss,
             roomCode,
-            { type: "room:state", roomCode, room, lanIp: getLocalLanIp() },
+            { type: "room:state", roomCode, room: getRoomPayload(room), lanIp: getLocalLanIp() },
             ws
           );
         } else if (type === "player:transform" || type === "player:moved") {
@@ -309,7 +322,7 @@ async function startServer() {
           broadcastToRoom(wss, info.roomCode, {
             type: "room:state",
             roomCode: info.roomCode,
-            room,
+            room: getRoomPayload(room),
             lanIp: getLocalLanIp()
           });
         } else if (type === "combat:hit" || type === "combat:event") {

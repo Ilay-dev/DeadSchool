@@ -19,6 +19,8 @@ import {
   type AABB,
   type WeaponId,
   type PickupItemType,
+  ARTHEM_NPC_POSITION,
+  DOMINIC_SCOOTER_ID,
 } from '../../game/rules';
 import { soundEngine } from '../../game/soundEngine';
 import { multiplayerManager } from '../../network/LocalMultiplayer';
@@ -131,21 +133,21 @@ function createNameplateTexture(
   return tex;
 }
 
-function createScooterBadgeTexture(): THREE.CanvasTexture {
+function createScooterBadgeTexture(isDominic = false): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
-  canvas.width = 256;
+  canvas.width = 280;
   canvas.height = 64;
   const ctx = canvas.getContext('2d');
   if (ctx) {
-    ctx.fillStyle = 'rgba(0, 24, 60, 0.85)';
-    ctx.fillRect(12, 10, 232, 44);
-    ctx.strokeStyle = '#fff000';
+    ctx.fillStyle = isDominic ? 'rgba(40, 20, 0, 0.92)' : 'rgba(0, 24, 60, 0.85)';
+    ctx.fillRect(8, 10, 264, 44);
+    ctx.strokeStyle = isDominic ? '#fbbf24' : '#fff000';
     ctx.lineWidth = 3;
-    ctx.strokeRect(12, 10, 232, 44);
-    ctx.font = 'bold 22px "Plus Jakarta Sans", sans-serif';
+    ctx.strokeRect(8, 10, 264, 44);
+    ctx.font = 'bold 18px "Plus Jakarta Sans", sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#fff000';
-    ctx.fillText('[E] E-Scooter fahren', 128, 39);
+    ctx.fillStyle = isDominic ? '#fbbf24' : '#fff000';
+    ctx.fillText(isDominic ? '⚡ [E] Dominics E-Scooter (3x SPEED)' : '[E] E-Scooter fahren', 140, 39);
   }
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -974,7 +976,8 @@ function CampusScooters() {
   const nearbyScooterId = useGameStore((s) => s.nearbyScooterId);
   const screen = useGameStore((s) => s.screen);
 
-  const badgeTex = useMemo(() => createScooterBadgeTexture(), []);
+  const standardBadgeTex = useMemo(() => createScooterBadgeTexture(false), []);
+  const dominicBadgeTex = useMemo(() => createScooterBadgeTexture(true), []);
 
   return (
     <>
@@ -982,6 +985,7 @@ function CampusScooters() {
         // Hide world mesh of the scooter the local player is currently riding (rendered as 1st-person handlebar)
         if (sc.id === ridingScooterId) return null;
         const isNearby = sc.id === nearbyScooterId && screen === 'playing';
+        const isDominic = Boolean(sc.isDominic);
 
         return (
           <group
@@ -992,15 +996,19 @@ function CampusScooters() {
             {/* E-Scooter Deck Platform */}
             <mesh position={[0, 0.12, 0]} castShadow receiveShadow>
               <boxGeometry args={[0.24, 0.05, 0.96]} />
-              <meshStandardMaterial color="#181c24" roughness={0.5} metalness={0.6} />
+              <meshStandardMaterial
+                color={isDominic ? '#b45309' : '#181c24'}
+                roughness={isDominic ? 0.3 : 0.5}
+                metalness={isDominic ? 0.85 : 0.6}
+              />
             </mesh>
-            {/* Electric Blue/Lime Side Trim */}
+            {/* Electric Blue/Lime Side Trim vs Dominic Gold/Flame Neon Underglow */}
             <mesh position={[0, 0.13, 0]}>
               <boxGeometry args={[0.25, 0.02, 0.88]} />
               <meshStandardMaterial
-                color="#0050aa"
-                emissive="#2b7fff"
-                emissiveIntensity={0.4}
+                color={isDominic ? '#f59e0b' : '#0050aa'}
+                emissive={isDominic ? '#fbbf24' : '#2b7fff'}
+                emissiveIntensity={isDominic ? 0.95 : 0.4}
               />
             </mesh>
             {/* Front & Rear Wheels */}
@@ -1012,26 +1020,51 @@ function CampusScooters() {
               <cylinderGeometry args={[0.11, 0.11, 0.07, 16]} />
               <meshStandardMaterial color="#0d0f12" roughness={0.8} />
             </mesh>
+            {/* Golden Wheel Rims for Dominic */}
+            {isDominic && (
+              <>
+                <mesh position={[0, 0.11, -0.42]} rotation={[0, 0, Math.PI / 2]}>
+                  <cylinderGeometry args={[0.065, 0.065, 0.072, 12]} />
+                  <meshStandardMaterial color="#fbbf24" metalness={0.9} roughness={0.2} />
+                </mesh>
+                <mesh position={[0, 0.11, 0.42]} rotation={[0, 0, Math.PI / 2]}>
+                  <cylinderGeometry args={[0.065, 0.065, 0.072, 12]} />
+                  <meshStandardMaterial color="#fbbf24" metalness={0.9} roughness={0.2} />
+                </mesh>
+              </>
+            )}
             {/* Steering Stem Column */}
             <mesh position={[0, 0.66, -0.36]} rotation={[-0.14, 0, 0]} castShadow>
               <cylinderGeometry args={[0.024, 0.028, 1.08, 12]} />
-              <meshStandardMaterial color="#272c35" roughness={0.35} metalness={0.8} />
+              <meshStandardMaterial
+                color={isDominic ? '#d97706' : '#272c35'}
+                roughness={0.3}
+                metalness={0.85}
+              />
             </mesh>
             {/* Handlebar */}
             <mesh position={[0, 1.16, -0.43]} rotation={[0, 0, Math.PI / 2]}>
               <cylinderGeometry args={[0.018, 0.018, 0.52, 12]} />
-              <meshStandardMaterial color="#111317" roughness={0.4} metalness={0.7} />
+              <meshStandardMaterial
+                color={isDominic ? '#78350f' : '#111317'}
+                roughness={0.4}
+                metalness={0.7}
+              />
             </mesh>
             {/* LED Headlight */}
             <mesh position={[0, 1.12, -0.46]}>
               <boxGeometry args={[0.05, 0.04, 0.03]} />
-              <meshBasicMaterial color="#fef08a" />
+              <meshBasicMaterial color={isDominic ? '#fde047' : '#fef08a'} />
             </mesh>
 
             {/* Floating [E] E-Scooter fahren Prompt when player is nearby */}
             {isNearby && (
               <sprite position={[0, 1.65, 0]} scale={[1.8, 0.45, 1]}>
-                <spriteMaterial map={badgeTex} transparent depthTest={false} />
+                <spriteMaterial
+                  map={isDominic ? dominicBadgeTex : standardBadgeTex}
+                  transparent
+                  depthTest={false}
+                />
               </sprite>
             )}
           </group>
@@ -1402,6 +1435,11 @@ function RemoteActorsAndBots({
           botDamage = 0;
           effectiveRange = 5.5;
           tracerColor = '#fff000';
+        } else if (actor.weaponClass === 'pan') {
+          fireInterval = 0.95;
+          botDamage = 55;
+          effectiveRange = 10.0;
+          tracerColor = '#94a3b8';
         }
 
         const lastBotShot = botTimersRef.current[actor.id] || 0;
@@ -1428,7 +1466,7 @@ function RemoteActorsAndBots({
           }
 
           if (actor.weaponClass === 'lidl_scanner') {
-            store.applyPlayerStun(10000);
+            store.applyPlayerStun(4000);
           } else {
             const damageWithDist = Math.max(
               6,
@@ -1474,7 +1512,7 @@ function RemoteActorsAndBots({
           predZ - rState.pos[2]
         );
 
-        if (distError > 6.0) {
+        if (distError > 24.0) {
           // Instant snap ONLY on actual respawn/teleport across the arena
           rState.pos[0] = predX;
           rState.pos[1] = predY;
@@ -1504,7 +1542,7 @@ function RemoteActorsAndBots({
         actor.position[2] = rState.pos[2];
 
         grp.position.set(rState.pos[0], rState.pos[1], rState.pos[2]);
-        grp.rotation.set(0, rState.yaw, 0);
+        grp.rotation.set(0, rState.yaw + Math.PI, 0);
       }
     });
   });
@@ -1687,13 +1725,17 @@ function createPickupBadgeTexture(type: PickupItemType): THREE.CanvasTexture {
         ? '#06b6d4'
         : type === 'kong_strong'
           ? '#facc15'
-          : '#f59e0b';
+          : type === 'street_dart'
+            ? '#ec4899'
+            : '#f59e0b';
     const label =
       type === 'vape_smoke'
         ? '💨 VAPE [Q]'
         : type === 'kong_strong'
           ? '⚡ KONG STRONG (+SPEED)'
-          : '🥐 SCHOKO-CROISSANT (+HP)';
+          : type === 'street_dart'
+            ? '💉 STREET DART (TRIP)'
+            : '🥐 SCHOKO-CROISSANT (+HP)';
 
     ctx.fillStyle = 'rgba(10, 14, 24, 0.82)';
     ctx.fillRect(8, 12, 240, 40);
@@ -1752,6 +1794,63 @@ export function VapePen3DModel({ scale = 1 }: { scale?: number }) {
       <mesh position={[0, 0.055, 0]}>
         <cylinderGeometry args={[0.049, 0.049, 0.022, 16]} />
         <meshBasicMaterial color="#22d3ee" />
+      </mesh>
+    </group>
+  );
+}
+
+/**
+ * 3D Model of a Syringe for the "Street Dart" Item.
+ */
+export function StreetDart3DModel({ scale = 1 }: { scale?: number }) {
+  return (
+    <group scale={scale}>
+      {/* Outer Clear Plastic/Glass Syringe Barrel */}
+      <mesh position={[0, 0.22, 0]} castShadow>
+        <cylinderGeometry args={[0.045, 0.045, 0.28, 16]} />
+        <meshPhysicalMaterial
+          color="#f472b6"
+          roughness={0.12}
+          metalness={0.1}
+          transmission={0.82}
+          transparent
+          opacity={0.85}
+        />
+      </mesh>
+      {/* Glowing Neon Liquid Inside Barrel */}
+      <mesh position={[0, 0.18, 0]}>
+        <cylinderGeometry args={[0.038, 0.038, 0.18, 16]} />
+        <meshStandardMaterial
+          color="#ec4899"
+          emissive="#d946ef"
+          emissiveIntensity={0.8}
+          roughness={0.3}
+        />
+      </mesh>
+      {/* Plunger Stopper & Shaft */}
+      <mesh position={[0, 0.32, 0]}>
+        <cylinderGeometry args={[0.016, 0.016, 0.16, 12]} />
+        <meshStandardMaterial color="#374151" metalness={0.8} roughness={0.3} />
+      </mesh>
+      {/* Plunger Thumb Flange at the Top */}
+      <mesh position={[0, 0.40, 0]}>
+        <cylinderGeometry args={[0.05, 0.05, 0.014, 16]} />
+        <meshStandardMaterial color="#4b5563" metalness={0.7} roughness={0.4} />
+      </mesh>
+      {/* Luer Lock Collar at the Bottom */}
+      <mesh position={[0, 0.07, 0]}>
+        <cylinderGeometry args={[0.026, 0.026, 0.032, 12]} />
+        <meshStandardMaterial color="#9ca3af" metalness={0.9} roughness={0.2} />
+      </mesh>
+      {/* Surgical Steel Needle Shaft */}
+      <mesh position={[0, -0.04, 0]}>
+        <cylinderGeometry args={[0.005, 0.005, 0.18, 8]} />
+        <meshStandardMaterial color="#e5e7eb" metalness={0.95} roughness={0.1} />
+      </mesh>
+      {/* Sharp Needle Beveled Tip */}
+      <mesh position={[0, -0.13, 0]} rotation={[0, 0, 0.15]}>
+        <coneGeometry args={[0.005, 0.03, 8]} />
+        <meshStandardMaterial color="#f9fafb" metalness={0.98} roughness={0.05} />
       </mesh>
     </group>
   );
@@ -1931,6 +2030,7 @@ function GroundPickupsAndSmoke() {
   const vapeBadge = useMemo(() => createPickupBadgeTexture('vape_smoke'), []);
   const kongBadge = useMemo(() => createPickupBadgeTexture('kong_strong'), []);
   const croissantBadge = useMemo(() => createPickupBadgeTexture('choco_croissant'), []);
+  const streetDartBadge = useMemo(() => createPickupBadgeTexture('street_dart'), []);
 
   useFrame((state) => {
     const t = state.clock.elapsedTime;
@@ -1967,13 +2067,17 @@ function GroundPickupsAndSmoke() {
             ? '#06b6d4'
             : item.type === 'kong_strong'
               ? '#facc15'
-              : '#f59e0b';
+              : item.type === 'street_dart'
+                ? '#ec4899'
+                : '#f59e0b';
         const badgeTex =
           item.type === 'vape_smoke'
             ? vapeBadge
             : item.type === 'kong_strong'
               ? kongBadge
-              : croissantBadge;
+              : item.type === 'street_dart'
+                ? streetDartBadge
+                : croissantBadge;
 
         return (
           <group
@@ -1998,6 +2102,7 @@ function GroundPickupsAndSmoke() {
             {item.type === 'vape_smoke' && <VapePen3DModel scale={1.35} />}
             {item.type === 'kong_strong' && <KongStrongCan3DModel scale={1.25} />}
             {item.type === 'choco_croissant' && <SchokoCroissant3DModel scale={1.35} />}
+            {item.type === 'street_dart' && <StreetDart3DModel scale={1.4} />}
 
             {/* Floating Item Label */}
             <sprite position={[0, 0.92, 0]} scale={[1.65, 0.42, 1]}>
@@ -2068,6 +2173,149 @@ function InteriorBuildingLights() {
       <pointLight position={[-25, 3.6, 28]} intensity={isUltra ? 2.2 : 1.2} distance={12} decay={2} color="#fff0db" />
       <pointLight position={[28, 3.6, -32]} intensity={isUltra ? 2.4 : 1.4} distance={14} decay={2} color="#eef4ff" />
       <pointLight position={[-15, 3.6, -46]} intensity={isUltra ? 2.2 : 1.2} distance={12} decay={2} color="#fff4e8" />
+    </group>
+  );
+}
+
+/**
+ * 3D Parabolic Trajectory Arc & Landing Marker for Charged Vape Smoke Throw ([Q])
+ */
+function VapeTrajectoryArc() {
+  const points = useGameStore((s) => s.vapeTrajectoryPoints);
+  const lineObj = useMemo(() => {
+    if (!points || points.length < 2) return null;
+    const v3s = points.map((p) => new THREE.Vector3(p[0], p[1], p[2]));
+    const geo = new THREE.BufferGeometry().setFromPoints(v3s);
+    const mat = new THREE.LineBasicMaterial({
+      color: 0x38bdf8,
+      linewidth: 3,
+      transparent: true,
+      opacity: 0.85,
+    });
+    return new THREE.Line(geo, mat);
+  }, [points]);
+
+  if (!points || points.length < 2 || !lineObj) return null;
+  const lastPoint = points[points.length - 1];
+
+  return (
+    <group>
+      <primitive object={lineObj} />
+      <mesh
+        position={[lastPoint[0], lastPoint[1] + 0.05, lastPoint[2]]}
+        rotation={[-Math.PI / 2, 0, 0]}
+      >
+        <ringGeometry args={[0.35, 0.55, 24]} />
+        <meshBasicMaterial
+          color="#38bdf8"
+          side={THREE.DoubleSide}
+          transparent
+          opacity={0.75}
+        />
+      </mesh>
+    </group>
+  );
+}
+
+/**
+ * Arthem NPC inside the school corridor (Spawn point: ARTHEM_NPC_POSITION).
+ * Players can press [E] to receive a Street Dart once per round (20% lethal risk).
+ */
+function ArthemNPC() {
+  const headRef = useRef<THREE.Group>(null);
+  const screen = useGameStore((s) => s.screen);
+
+  const badgeTex = useMemo(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 300;
+    canvas.height = 72;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+      ctx.fillRect(6, 8, 288, 56);
+      ctx.strokeStyle = '#ec4899';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(6, 8, 288, 56);
+      ctx.font = 'bold 18px "Plus Jakarta Sans", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#f472b6';
+      ctx.fillText('👤 Arthem [E]', 150, 32);
+      ctx.font = '12px "Plus Jakarta Sans", sans-serif';
+      ctx.fillStyle = '#cbd5e1';
+      ctx.fillText('Street Dart Dealer (20% Gefahr)', 150, 52);
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }, []);
+
+  useFrame((state) => {
+    if (headRef.current) {
+      headRef.current.rotation.y = Math.sin(state.clock.elapsedTime * 1.5) * 0.15;
+    }
+  });
+
+  return (
+    <group position={ARTHEM_NPC_POSITION} rotation={[0, -0.4, 0]}>
+      {screen === 'playing' && (
+        <sprite position={[0, 2.2, 0]} scale={[2.2, 0.55, 1]}>
+          <spriteMaterial map={badgeTex} transparent depthTest={false} />
+        </sprite>
+      )}
+
+      {/* Arthem 3D Body - Black/Purple Hoodie, Streetwear Sneaker */}
+      <mesh position={[-0.14, 0.42, 0]} castShadow>
+        <boxGeometry args={[0.18, 0.84, 0.22]} />
+        <meshStandardMaterial color="#0f172a" roughness={0.8} />
+      </mesh>
+      <mesh position={[0.14, 0.42, 0]} castShadow>
+        <boxGeometry args={[0.18, 0.84, 0.22]} />
+        <meshStandardMaterial color="#0f172a" roughness={0.8} />
+      </mesh>
+      <mesh position={[-0.14, 0.06, 0.03]} castShadow>
+        <boxGeometry args={[0.2, 0.12, 0.28]} />
+        <meshStandardMaterial color="#ffffff" roughness={0.5} />
+      </mesh>
+      <mesh position={[0.14, 0.06, 0.03]} castShadow>
+        <boxGeometry args={[0.2, 0.12, 0.28]} />
+        <meshStandardMaterial color="#ffffff" roughness={0.5} />
+      </mesh>
+
+      {/* Torso & Streetwear Hoodie */}
+      <mesh position={[0, 1.15, 0]} castShadow>
+        <boxGeometry args={[0.54, 0.65, 0.32]} />
+        <meshStandardMaterial color="#1e1b4b" roughness={0.7} />
+      </mesh>
+      <mesh position={[0, 1.22, 0.165]}>
+        <boxGeometry args={[0.24, 0.18, 0.01]} />
+        <meshStandardMaterial color="#ec4899" emissive="#db2777" emissiveIntensity={0.3} />
+      </mesh>
+
+      {/* Arms */}
+      <mesh position={[-0.32, 1.12, 0.04]} rotation={[0.2, 0, 0.1]} castShadow>
+        <boxGeometry args={[0.15, 0.6, 0.18]} />
+        <meshStandardMaterial color="#1e1b4b" roughness={0.7} />
+      </mesh>
+      <mesh position={[0.32, 1.12, 0.04]} rotation={[0.2, 0, -0.1]} castShadow>
+        <boxGeometry args={[0.15, 0.6, 0.18]} />
+        <meshStandardMaterial color="#1e1b4b" roughness={0.7} />
+      </mesh>
+
+      {/* Head, Beanie & Shades */}
+      <group ref={headRef} position={[0, 1.62, 0]}>
+        <mesh castShadow>
+          <sphereGeometry args={[0.16, 16, 16]} />
+          <meshStandardMaterial color="#fbcfe8" roughness={0.6} />
+        </mesh>
+        <mesh position={[0, 0.06, -0.01]}>
+          <cylinderGeometry args={[0.165, 0.175, 0.14, 16]} />
+          <meshStandardMaterial color="#09090b" roughness={0.8} />
+        </mesh>
+        <mesh position={[0, 0.02, 0.15]}>
+          <boxGeometry args={[0.22, 0.06, 0.04]} />
+          <meshStandardMaterial color="#020617" roughness={0.1} metalness={0.9} />
+        </mesh>
+      </group>
     </group>
   );
 }
@@ -2168,6 +2416,12 @@ export function TacticalArenaScene({
 
       {/* Ground Pickups (Vapes, Kong Strong Cans, Schoko-Croissants) & 3D Vape Smoke Clouds */}
       <GroundPickupsAndSmoke />
+
+      {/* Arthem NPC inside the school corridor */}
+      <ArthemNPC />
+
+      {/* 3D Ballistic Trajectory Arc when charging Vape throw ([Q]) */}
+      <VapeTrajectoryArc />
 
       {/* Persistent 3D Bullet Hole Decals on Walls & Objects */}
       <BulletHoleDecals decals={bulletHoles} />

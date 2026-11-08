@@ -1282,6 +1282,9 @@ class LocalMultiplayerManager {
       if (msg.lanIp) {
         store.setLanInfo(msg.lanIp);
       }
+      if (typeof msg.room.matchTimeRemaining === 'number') {
+        store.setMatchTimeRemaining(msg.room.matchTimeRemaining);
+      }
       const playersMap: Record<string, RemoteActor> = {};
       Object.values(msg.room.players || {}).forEach((p: any, idx: number) => {
         if (p.id !== store.playerId) {
@@ -1325,6 +1328,12 @@ class LocalMultiplayerManager {
         msg.modeId !== store.selectedModeId
       ) {
         store.setModeId(msg.modeId);
+      }
+      if (typeof msg.lobbyCountdownSec === 'number' || msg.lobbyCountdownSec === null) {
+        store.setLobbyCountdown(msg.lobbyCountdownSec);
+      }
+      if (typeof msg.matchTimeRemaining === 'number' && !store.isHost) {
+        store.setMatchTimeRemaining(msg.matchTimeRemaining);
       }
     } else if (msg.type === 'combat:event' || msg.type === 'combat:hit') {
       const stunMs = Number(msg.stunDurationMs) || 0;
@@ -1576,6 +1585,8 @@ class LocalMultiplayerManager {
       team: store.playerTeam,
       ready: store.isReady,
       weaponClass: store.selectedClass,
+      lobbyCountdownSec: store.lobbyCountdownSec,
+      matchTimeRemaining: store.matchTimeRemaining,
     });
   }
 

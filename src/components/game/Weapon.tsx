@@ -143,6 +143,44 @@ export function WeaponModelGeometry({
   const sightHex =
     sightColor === 'Green' ? '#22c55e' : sightColor === 'Cyan' ? '#06b6d4' : '#ef4444';
 
+  if (weaponId === 'pan') {
+    // Heavy Tactical Cast-Iron Frying Pan (10m Melee)
+    return (
+      <group position={[0.08, -0.06, -0.16]} rotation={[0.25, 0.45, -0.15]}>
+        {/* Pan Base Disc */}
+        <mesh position={[0, 0, -0.22]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+          <cylinderGeometry args={[0.16, 0.16, 0.02, 24]} />
+          <meshStandardMaterial color="#1e2229" roughness={0.4} metalness={0.8} />
+        </mesh>
+        {/* Pan Sloped Rim Wall */}
+        <mesh position={[0, 0.03, -0.22]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+          <cylinderGeometry args={[0.18, 0.16, 0.05, 24, 1, true]} />
+          <meshStandardMaterial color="#262c36" roughness={0.4} metalness={0.8} side={THREE.DoubleSide} />
+        </mesh>
+        {/* Thick Pan Rim Lip */}
+        <mesh position={[0, 0.055, -0.22]} rotation={[Math.PI / 2, 0, 0]}>
+          <torusGeometry args={[0.18, 0.012, 12, 24]} />
+          <meshStandardMaterial color="#111317" roughness={0.3} metalness={0.85} />
+        </mesh>
+        {/* Pan Handle Neck */}
+        <mesh position={[0, 0.03, -0.04]} rotation={[0.15, 0, 0]} castShadow>
+          <boxGeometry args={[0.036, 0.022, 0.14]} />
+          <meshStandardMaterial color="#15171a" roughness={0.4} metalness={0.75} />
+        </mesh>
+        {/* Pan Handle Grip */}
+        <mesh position={[0, 0.05, 0.08]} rotation={[0.15, 0, 0]} castShadow>
+          <boxGeometry args={[0.034, 0.026, 0.16]} />
+          <meshStandardMaterial color="#0b0d10" roughness={0.7} metalness={0.4} />
+        </mesh>
+        {/* Hanging Hole at End of Handle */}
+        <mesh position={[0, 0.065, 0.16]} rotation={[Math.PI / 2 + 0.15, 0, 0]}>
+          <torusGeometry args={[0.018, 0.008, 8, 16]} />
+          <meshStandardMaterial color="#15171a" roughness={0.4} metalness={0.8} />
+        </mesh>
+      </group>
+    );
+  }
+
   if (weaponId === 'lidl_scanner') {
     // Iconic Lidl Handheld Barcode Scanner (Blue #0050aa, Yellow #fff000, Red #e60014)
     return (
@@ -1050,6 +1088,7 @@ const ADS_OFFSETS_BY_WEAPON: Record<WeaponId, { x: number; y: number; z: number 
   semi_sniper: { x: 0.0, y: -0.11, z: -0.53 },
   shotgun: { x: 0.0, y: -0.068, z: -0.5 },
   lidl_scanner: { x: 0.0, y: -0.075, z: -0.46 },
+  pan: { x: 0.0, y: -0.06, z: -0.42 },
 };
 
 export function FirstPersonWeapon({

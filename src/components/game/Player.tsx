@@ -16,6 +16,8 @@ import {
   calculateHitDamage,
   canFireWeaponOnScooter,
   computeSlideStep,
+  DOMINIC_SCOOTER_SPEED_MULTIPLIER,
+  ARTHEM_NPC_POSITION,
   type AABB,
   type HitZone,
 } from '../../game/rules';
@@ -92,6 +94,8 @@ export function PlayerController({
   const recoilOffsetRef = useRef({ pitch: 0, yaw: 0, kickBack: 0 });
   const muzzleFlashRef = useRef(0);
   const damageShakeRef = useRef(0);
+  const isChargingVapeRef = useRef<boolean>(false);
+  const vapeChargeStartPerfRef = useRef<number>(0);
 
   const hp = useGameStore((s) => s.hp);
   const prevHpRef = useRef(hp);
@@ -163,8 +167,8 @@ export function PlayerController({
       });
     }
 
-    camera.position.set(sx, sy + 45, sz + 12);
-    _euler.set(-0.95, spawn.rotationY, 0, 'YXZ');
+    camera.position.set(sx, sy + PLAYER_DIMENSIONS.standingEyeHeight, sz);
+    _euler.set(0, spawn.rotationY, 0, 'YXZ');
     camera.quaternion.setFromEuler(_euler);
   }, [selectedMapId, playerTeam, respawnNonce, camera]);
 
@@ -402,22 +406,29 @@ export function PlayerController({
 
       const kb = store.settings.keybinds;
 
-      // Press [Q] to throw a collected Vape Smoke Grenade along a ballistic trajectory
-      if (keyUpper === 'Q' && !e.repeat) {
-        camera.getWorldDirection(_rayDir);
-        const didThrow = store.throwVapeSmokeGrenade(
-          [camera.position.x, camera.position.y - 0.1, camera.position.z],
-          [_rayDir.x, _rayDir.y, _rayDir.z],
-          footPosRef.current[1] + 0.15
-        );
-        if (didThrow) {
-          soundEngine.playVapeThrowAndPuffSound();
-        }
+      // Hold [Q] to charge and throw a collected Vape Smoke Grenade along a ballistic trajectory
+      if (keyUpper === 'Q' && !e.repeat && store.vapeCount > 0 && !store.isDowned) {
+        isChargingVapeRef.current = true;
+        vapeChargeStartPerfRef.current = performance.now();
         return;
       }
 
-      // Press [E] to mount/dismount nearby Campus E-Scooter
+      // Press [E] to interact with Arthem NPC or mount/dismount nearby Campus E-Scooter
       if (keyUpper === 'E' && !e.repeat) {
+        // 1. Check if near Arthem NPC inside the school building
+        const distToArthem = Math.hypot(
+          footPosRef.current[0] - ARTHEM_NPC_POSITION[0],
+          footPosRef.current[2] - ARTHEM_NPC_POSITION[2]
+        );
+        if (distToArthem <= 2.8 && !store.hasTalkedToArthemThisRound && !store.isEliminated && !store.isDowned) {
+          const res = store.interactWithArthem();
+          if (res.lethal) {
+            soundEngine.playDamageTakenSound();
+          }
+          return;
+        }
+
+        // 2. Mount/dismount nearby Campus E-Scooter
         if (store.ridingScooterId || store.nearbyScooterId) {
           _euler.setFromQuaternion(camera.quaternion, 'YXZ');
           const mounted = store.toggleMountScooter(footPosRef.current, _euler.y);
@@ -478,6 +489,23 @@ export function PlayerController({
       const keyUpper = e.key === ' ' ? 'SPACE' : e.key.toUpperCase();
       keysHeldRef.current.delete(keyUpper);
       const store = useGameStore.getState();
+
+      if (keyUpper === 'Q' && isChargingVapeRef.current) {
+        isChargingVapeRef.current = false;
+        const chargeRatio = Math.min(1.0, (performance.now() - vapeChargeStartPerfRef.current) / 1000);
+        const throwForce = 9.0 + chargeRatio * 20.0;
+        camera.getWorldDirection(_rayDir);
+        const didThrow = store.throwVapeSmokeGrenade(
+          [camera.position.x, camera.position.y - 0.1, camera.position.z],
+          [_rayDir.x, _rayDir.y, _rayDir.z],
+          footPosRef.current[1] + 0.15,
+          throwForce
+        );
+        if (didThrow) {
+          soundEngine.playVapeThrowAndPuffSound();
+        }
+        store.setVapeCharge(0, []);
+      }
 
       if (e.key === 'Control' || keyUpper === 'C') {
         store.setCrouching(false);
@@ -586,6 +614,16 @@ export function PlayerController({
       store.setNearbyScooterId(store.ridingScooterId);
     }
 
+    // Check proximity to Arthem NPC in the school corridor
+    const distToArthem = Math.hypot(
+      footPosRef.current[0] - ARTHEM_NPC_POSITION[0],
+      footPosRef.current[2] - ARTHEM_NPC_POSITION[2]
+    );
+    const nearArthem = distToArthem <= 2.8 && !store.hasTalkedToArthemThisRound;
+    if (store.isNearArthem !== nearArthem) {
+      store.setIsNearArthem(nearArthem);
+    }
+
     // If eliminated or stunned by Lidl Barcode Scanner (10s), freeze player movement & firing
     const isStunned = Date.now() < store.stunnedUntil;
     if (store.isEliminated || isStunned) {
@@ -678,13 +716,12 @@ export function PlayerController({
       }
     }
 
-    // Determine horizontal velocity: Drone Intro vs Downed (Crawling) vs Riding E-Scooter vs Sliding vs Walking
+    // Determine horizontal velocity: Downed (Crawling) vs Riding E-Scooter vs Sliding vs Walking
     let desiredDx = 0;
     let desiredDz = 0;
     let currentSpeed: number = PLAYER_DIMENSIONS.walkSpeed * kongSpeedBoost;
-    const isDroneIntro = store.droneIntroTimer > 0;
 
-    if (isDroneIntro) {
+    if (store.matchStartCountdownSec > 0) {
       currentSpeed = 0;
       desiredDx = 0;
       desiredDz = 0;
@@ -694,7 +731,8 @@ export function PlayerController({
       desiredDx = _moveVec.x * currentSpeed * dt;
       desiredDz = _moveVec.z * currentSpeed * dt;
     } else if (store.ridingScooterId) {
-      currentSpeed = PLAYER_DIMENSIONS.scooterSpeed;
+      const isDominic = store.scooters.find((s) => s.id === store.ridingScooterId)?.isDominic;
+      currentSpeed = PLAYER_DIMENSIONS.scooterSpeed * (isDominic ? DOMINIC_SCOOTER_SPEED_MULTIPLIER : 1.0);
       desiredDx = _moveVec.x * currentSpeed * dt;
       desiredDz = _moveVec.z * currentSpeed * dt;
     } else if (store.isSliding && slideRemainingRef.current > 0) {
@@ -714,8 +752,14 @@ export function PlayerController({
       desiredDz = _moveVec.z * currentSpeed * dt;
     }
 
-    // Jump impulse (jumping also cancels slide, disabled when downed or during drone intro)
-    if (held.has(kb.jump) && isGroundedRef.current && !store.isDowned && !isDroneIntro) {
+    // Jump impulse (jumping also cancels slide; blocked while on E-Scooter, downed, or during match countdown)
+    if (
+      held.has(kb.jump) &&
+      isGroundedRef.current &&
+      !store.isDowned &&
+      !store.ridingScooterId &&
+      store.matchStartCountdownSec <= 0
+    ) {
       velocityYRef.current = PLAYER_DIMENSIONS.jumpVelocity;
       isGroundedRef.current = false;
       if (store.isSliding) {
@@ -765,50 +809,8 @@ export function PlayerController({
           y: desiredDy,
           z: desiredDz,
         });
-        let corrected = controller.computedMovement();
+        const corrected = controller.computedMovement();
         let grounded = controller.computedGrounded();
-
-        // Anti-snag micro-seam recovery: if player is trying to move horizontally on ground
-        // but a floor/stair triangle seam blocked horizontal progress, test with a gentle +0.10m step lift
-        const desiredHoriz = Math.hypot(desiredDx, desiredDz);
-        const actualHoriz = Math.hypot(corrected.x, corrected.z);
-        if (
-          desiredHoriz > 0.004 &&
-          actualHoriz < desiredHoriz * 0.2 &&
-          velocityYRef.current <= 0.5
-        ) {
-          rb.setTranslation(
-            {
-              x: footPosRef.current[0],
-              y: footPosRef.current[1] + capsuleHalfHeight + 0.1,
-              z: footPosRef.current[2],
-            },
-            false
-          );
-          controller.computeColliderMovement(collider, {
-            x: desiredDx,
-            y: Math.min(0, desiredDy) - 0.1,
-            z: desiredDz,
-          });
-          const retryCorrected = controller.computedMovement();
-          if (Math.hypot(retryCorrected.x, retryCorrected.z) > actualHoriz * 1.5) {
-            corrected = {
-              x: retryCorrected.x,
-              y: retryCorrected.y + 0.1,
-              z: retryCorrected.z,
-            };
-            grounded = controller.computedGrounded() || grounded;
-          } else {
-            rb.setTranslation(
-              {
-                x: footPosRef.current[0],
-                y: footPosRef.current[1] + capsuleHalfHeight,
-                z: footPosRef.current[2],
-              },
-              false
-            );
-          }
-        }
 
         nextFootX = footPosRef.current[0] + corrected.x;
         nextFootY = Math.max(-15, footPosRef.current[1] + corrected.y);
@@ -989,22 +991,10 @@ export function PlayerController({
       damageShakeRef.current = THREE.MathUtils.damp(damageShakeRef.current, 0, 14, dt);
     }
 
-    // Drone satellite camera swooping smoothly down into player position on deploy
-    let droneAlt = 0;
-    let droneZOffset = 0;
-    let dronePitch = 0;
-    if (store.droneIntroTimer > 0) {
-      const p = 1.0 - Math.max(0, store.droneIntroTimer / 1.8);
-      const ease = 1.0 - Math.pow(1.0 - p, 3);
-      droneAlt = (1.0 - ease) * 45;
-      droneZOffset = (1.0 - ease) * 16;
-      dronePitch = -(1.0 - ease) * 0.95;
-    }
-
     camera.position.set(
       nextFootX,
-      nextFootY + currentEyeOffsetRef.current + shakeY + droneAlt,
-      nextFootZ + droneZOffset
+      nextFootY + currentEyeOffsetRef.current + shakeY,
+      nextFootZ
     );
 
     _euler.setFromQuaternion(camera.quaternion, 'YXZ');
@@ -1013,10 +1003,45 @@ export function PlayerController({
       _euler.y += shakeYaw;
       _euler.z += shakeRoll;
     }
-    if (store.droneIntroTimer > 0) {
-      _euler.x += dronePitch;
+
+    // Street Dart psychedelic trip camera roll & wobble
+    if (store.streetDartUntil > Date.now()) {
+      const tripTime = performance.now() * 0.003;
+      _euler.z += Math.sin(tripTime) * 0.18;
+      _euler.x += Math.cos(tripTime * 0.7) * 0.08;
+      _euler.y += Math.sin(tripTime * 0.5) * 0.06;
     }
     camera.quaternion.setFromEuler(_euler);
+
+    // Compute ballistic trajectory for charged Vape smoke grenade throw [Q]
+    if (isChargingVapeRef.current && store.vapeCount > 0 && !store.isDowned) {
+      const chargeRatio = Math.min(
+        1.0,
+        (performance.now() - vapeChargeStartPerfRef.current) / 1000
+      );
+      const throwForce = 9.0 + chargeRatio * 20.0;
+      camera.getWorldDirection(_rayDir);
+
+      const trajPoints: [number, number, number][] = [];
+      const originX = camera.position.x;
+      const originY = camera.position.y - 0.1;
+      const originZ = camera.position.z;
+      const vx = _rayDir.x * throwForce;
+      const vy = _rayDir.y * throwForce + 2.5;
+      const vz = _rayDir.z * throwForce;
+      const gravity = 16.0;
+      const groundFloorY = footPosRef.current[1] + 0.15;
+
+      for (let s = 0; s <= 30; s++) {
+        const t = s * 0.04;
+        const px = originX + vx * t;
+        const py = Math.max(groundFloorY, originY + vy * t - 0.5 * gravity * t * t);
+        const pz = originZ + vz * t;
+        trajPoints.push([px, py, pz]);
+        if (py <= groundFloorY && s > 2) break;
+      }
+      store.setVapeCharge(chargeRatio, trajPoints);
+    }
 
     const speedRatio = store.isSliding
       ? 1.2
