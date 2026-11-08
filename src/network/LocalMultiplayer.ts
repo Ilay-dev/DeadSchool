@@ -20,6 +20,8 @@ export interface NetworkTransformPacket {
   ads: boolean;
   ridingScooter: boolean;
   weaponClass: WeaponId;
+  soldierSkin?: string;
+  weaponSkin?: string;
   hp?: number;
   maxHp?: number;
   kills?: number;
@@ -862,6 +864,8 @@ class LocalMultiplayerManager {
       ads: store.isAds,
       ridingScooter: Boolean(store.ridingScooterId),
       weaponClass: store.selectedClass,
+      soldierSkin: store.soldierSkin,
+      weaponSkin: store.weaponSkin,
       hp: Math.round(store.hp),
       maxHp: store.maxHp,
       kills: store.localKills,
@@ -954,6 +958,8 @@ class LocalMultiplayerManager {
       ads: store.isAds,
       ridingScooter: Boolean(store.ridingScooterId),
       weaponClass: store.selectedClass,
+      soldierSkin: store.soldierSkin,
+      weaponSkin: store.weaponSkin,
       hp: Math.round(store.hp),
       maxHp: store.maxHp,
       kills: store.localKills,
@@ -1270,6 +1276,8 @@ class LocalMultiplayerManager {
             ready: typeof msg.ready === 'boolean' ? msg.ready : undefined,
             isDowned: Boolean(msg.isDowned),
             downedHp: typeof msg.downedHp === 'number' ? msg.downedHp : undefined,
+            soldierSkin: msg.soldierSkin,
+            weaponSkin: msg.weaponSkin,
           }
         );
 
@@ -1298,6 +1306,8 @@ class LocalMultiplayerManager {
             name: p.name || `Player_${String(p.id).slice(0, 4)}`,
             team: p.team || (store.selectedModeId === 'FFA' ? 'bravo' : 'alpha'),
             weaponClass: p.weaponClass || 'assault',
+            soldierSkin: p.soldierSkin || 'default',
+            weaponSkin: p.weaponSkin || 'default',
             ready: Boolean(p.ready),
             hp: Number(p.hp) || 100,
             maxHp: Number(p.maxHp) || 100,
@@ -1655,14 +1665,17 @@ class LocalMultiplayerManager {
 
   public async fetchLanInfo(): Promise<ActiveRoomSummary[]> {
     this.refreshActiveRoomsList();
-    const isStaticHost =
+    const isLocalOrLan =
       typeof window !== 'undefined' &&
-      (window.location.hostname.includes('github.io') ||
-        window.location.hostname.includes('vercel.app') ||
-        window.location.hostname.includes('netlify.app') ||
-        window.location.protocol === 'file:');
+      (window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1' ||
+        window.location.hostname === '::1' ||
+        window.location.hostname.endsWith('.local') ||
+        /^192\.168\.\d+\.\d+$/.test(window.location.hostname) ||
+        /^10\.\d+\.\d+\.\d+$/.test(window.location.hostname) ||
+        /^172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+$/.test(window.location.hostname));
 
-    if (isStaticHost) {
+    if (!isLocalOrLan) {
       useGameStore.getState().setLanInfo(window.location.hostname, 'webrtc-p2p');
       return this.activeRooms;
     }
@@ -1695,14 +1708,17 @@ class LocalMultiplayerManager {
       this.reconnectTimeout = null;
     }
 
-    const isStaticHost =
+    const isLocalOrLan =
       typeof window !== 'undefined' &&
-      (window.location.hostname.includes('github.io') ||
-        window.location.hostname.includes('vercel.app') ||
-        window.location.hostname.includes('netlify.app') ||
-        window.location.protocol === 'file:');
+      (window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1' ||
+        window.location.hostname === '::1' ||
+        window.location.hostname.endsWith('.local') ||
+        /^192\.168\.\d+\.\d+$/.test(window.location.hostname) ||
+        /^10\.\d+\.\d+\.\d+$/.test(window.location.hostname) ||
+        /^172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+$/.test(window.location.hostname));
 
-    if (isStaticHost && !customHostIp) {
+    if (!isLocalOrLan && !customHostIp) {
       useGameStore.getState().setLanInfo(window.location.hostname, 'webrtc-p2p');
       return;
     }

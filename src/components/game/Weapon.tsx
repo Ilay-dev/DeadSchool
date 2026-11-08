@@ -129,6 +129,62 @@ function getWeaponSkinPalette(
   }
 }
 
+export function LidlLogoDecal({
+  position = [0, 0, 0],
+  rotation = [0, 0, 0],
+  scale = 1,
+}: {
+  position?: [number, number, number];
+  rotation?: [number, number, number];
+  scale?: number;
+}) {
+  const tex = useMemo(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      // Blue Outer Disc
+      ctx.fillStyle = '#0050aa';
+      ctx.beginPath();
+      ctx.arc(64, 64, 60, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Yellow Center Disc with Red Rim
+      ctx.beginPath();
+      ctx.arc(64, 64, 52, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff000';
+      ctx.fill();
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = '#e60014';
+      ctx.stroke();
+
+      // Bold LIDL Letters
+      ctx.font = '900 42px "Plus Jakarta Sans", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#0050aa';
+      ctx.fillText('LIDL', 64, 66);
+
+      // Red Dot on 'i'
+      ctx.beginPath();
+      ctx.arc(44, 44, 5.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#e60014';
+      ctx.fill();
+    }
+    const t = new THREE.CanvasTexture(canvas);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }, []);
+
+  return (
+    <mesh position={position} rotation={rotation} scale={scale}>
+      <planeGeometry args={[0.07, 0.07]} />
+      <meshBasicMaterial map={tex} transparent depthWrite={false} side={THREE.DoubleSide} />
+    </mesh>
+  );
+}
+
 export function WeaponModelGeometry({
   weaponId,
   isAds = false,
@@ -142,70 +198,6 @@ export function WeaponModelGeometry({
   const sightColor = useGameStore((s) => s.settings.sightColor);
   const sightHex =
     sightColor === 'Green' ? '#22c55e' : sightColor === 'Cyan' ? '#06b6d4' : '#ef4444';
-
-  if (weaponId === 'pan') {
-    // Heavy Authentic Cast-Iron Skillet (2m Melee)
-    return (
-      <group position={[0.09, -0.07, -0.18]} rotation={[0.22, 0.42, -0.12]}>
-        {/* Pan Bottom Cooking Disc with Cast Iron Seasoned Finish */}
-        <mesh position={[0, 0, -0.23]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-          <cylinderGeometry args={[0.165, 0.165, 0.016, 32]} />
-          <meshStandardMaterial color="#1a1d22" roughness={0.55} metalness={0.7} />
-        </mesh>
-        {/* Concentric Heat Ring on Underside */}
-        <mesh position={[0, -0.01, -0.23]} rotation={[Math.PI / 2, 0, 0]}>
-          <torusGeometry args={[0.11, 0.005, 8, 32]} />
-          <meshStandardMaterial color="#121417" roughness={0.65} metalness={0.8} />
-        </mesh>
-        {/* Deep Curved Flared Skillet Bowl Wall */}
-        <mesh position={[0, 0.034, -0.23]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-          <cylinderGeometry args={[0.19, 0.165, 0.065, 32, 1, true]} />
-          <meshStandardMaterial
-            color="#22272e"
-            roughness={0.48}
-            metalness={0.72}
-            side={THREE.DoubleSide}
-          />
-        </mesh>
-        {/* Thick Rolled Smooth Rim Lip */}
-        <mesh position={[0, 0.068, -0.23]} rotation={[Math.PI / 2, 0, 0]}>
-          <torusGeometry args={[0.19, 0.014, 14, 32]} />
-          <meshStandardMaterial color="#16191e" roughness={0.4} metalness={0.82} />
-        </mesh>
-        {/* Left Side Pouring Spout */}
-        <mesh position={[-0.192, 0.064, -0.23]} rotation={[0, 0, Math.PI / 6]}>
-          <boxGeometry args={[0.022, 0.016, 0.038]} />
-          <meshStandardMaterial color="#1c2027" roughness={0.45} metalness={0.75} />
-        </mesh>
-        {/* Right Side Pouring Spout */}
-        <mesh position={[0.192, 0.064, -0.23]} rotation={[0, 0, -Math.PI / 6]}>
-          <boxGeometry args={[0.022, 0.016, 0.038]} />
-          <meshStandardMaterial color="#1c2027" roughness={0.45} metalness={0.75} />
-        </mesh>
-
-        {/* Heavy Reinforced Pan Neck Bracket */}
-        <mesh position={[0, 0.045, -0.045]} rotation={[0.18, 0, 0]} castShadow>
-          <boxGeometry args={[0.048, 0.026, 0.13]} />
-          <meshStandardMaterial color="#16181d" roughness={0.5} metalness={0.8} />
-        </mesh>
-        {/* Ergonomic Contoured Handle with Thumb Rest */}
-        <mesh position={[0, 0.068, 0.08]} rotation={[0.18, 0, 0]} castShadow>
-          <boxGeometry args={[0.038, 0.032, 0.17]} />
-          <meshStandardMaterial color="#0e1013" roughness={0.65} metalness={0.4} />
-        </mesh>
-        {/* Handle Hanging Hole / Brass Rivet End */}
-        <mesh position={[0, 0.086, 0.175]} rotation={[Math.PI / 2 + 0.18, 0, 0]}>
-          <torusGeometry args={[0.02, 0.009, 10, 20]} />
-          <meshStandardMaterial color="#b45309" roughness={0.25} metalness={0.85} />
-        </mesh>
-
-        {/* Tactical Forearm and Gloved Hand Firmly Gripping the Pan Handle */}
-        <TacticalForearmAndGlove
-          gripPos={[0.01, 0.062, 0.06]}
-        />
-      </group>
-    );
-  }
 
   if (weaponId === 'fist') {
     // Tactical Bare-Knuckle Boxer Fists Guard
@@ -253,7 +245,7 @@ export function WeaponModelGeometry({
   }
 
   if (weaponId === 'lidl_scanner') {
-    // Iconic Lidl Handheld Barcode Scanner (Blue #0050aa, Yellow #fff000, Red #e60014)
+    // Iconic Lidl Handheld Barcode Scanner with official Lidl Emblem
     return (
       <group>
         {/* Ergonomic Pistol Handle in Lidl Blue */}
@@ -279,13 +271,11 @@ export function WeaponModelGeometry({
         {/* Lidl Yellow & Red Side Brand Stripes */}
         <mesh position={[0, 0.032, -0.055]} rotation={[0.08, 0, 0]}>
           <boxGeometry args={[0.082, 0.022, 0.13]} />
-          <meshStandardMaterial
-            color="#fff000"
-            emissive="#facc15"
-            emissiveIntensity={0.2}
-            roughness={0.3}
-          />
+          <meshStandardMaterial color="#fff000" roughness={0.35} />
         </mesh>
+        {/* Official Lidl Round Logos on both left and right flanks */}
+        <LidlLogoDecal position={[-0.042, 0.034, -0.05]} rotation={[0, -Math.PI / 2, 0]} scale={0.7} />
+        <LidlLogoDecal position={[0.042, 0.034, -0.05]} rotation={[0, Math.PI / 2, 0]} scale={0.7} />
         <mesh position={[0, 0.032, -0.055]} rotation={[0.08, 0, 0]}>
           <boxGeometry args={[0.084, 0.008, 0.132]} />
           <meshStandardMaterial color="#e60014" roughness={0.3} />

@@ -42,9 +42,6 @@ test('WEAPON_CLASSES includes balanced firearms and Lidl Barcode Scanner (4m ran
   assert.equal(WEAPON_CLASSES.sniper.maxRange, 99999.0);
   assert.equal(WEAPON_CLASSES.shotgun.ammo, 2);
   assert.equal(WEAPON_CLASSES.semi_sniper.ammo, 8);
-  assert.equal(WEAPON_CLASSES.pan.maxRange, 2.0);
-  assert.equal(WEAPON_CLASSES.pan.damage, 55);
-  assert.equal(WEAPON_CLASSES.pan.fireRateMs, 950);
   assert.equal(WEAPON_CLASSES.fist.damage, 5);
   assert.equal(WEAPON_CLASSES.fist.maxRange, 1.8);
 

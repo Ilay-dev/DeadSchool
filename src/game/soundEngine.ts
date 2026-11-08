@@ -55,10 +55,6 @@ class SoundEngine {
       this.playLidlScannerSound(volumeScale);
       return;
     }
-    if (weaponId === 'pan') {
-      this.playPanClangSound(volumeScale);
-      return;
-    }
     if (weaponId === 'fist') {
       this.playFistPunchSound(volumeScale);
       return;
