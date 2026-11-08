@@ -18,6 +18,10 @@ import {
   computeSlideStep,
   DOMINIC_SCOOTER_SPEED_MULTIPLIER,
   ARTHEM_NPC_POSITION,
+  JUSTUS_NPC_POSITION,
+  LIDL_KASSIERER_NPC_POSITION,
+  PRISON_CELL_POSITION,
+  PRISON_DURATION_SEC,
   HAUSMEISTER_NPC_POSITION,
   STREET_DART_DURATION_MS,
   STREET_DART_SMOKE_RADIUS,
@@ -241,7 +245,67 @@ export function PlayerController({
     for (let p = 0; p < stats.pellets; p++) {
       _rayOrigin.copy(camera.position);
       camera.getWorldDirection(_rayDir);
-      if (spreadAmount > 0.0001) {
+
+      // Secret Developer Aimbot for 'Ilay-dev':
+      // Lock onto the closest visible enemy (ignoring enemies occluded by solid walls)
+      let aimbotLocked = false;
+      if (state.devCheatsActive) {
+        let bestTargetDist = Infinity;
+        let bestTargetDir = new THREE.Vector3();
+
+        const enemies = Object.values(state.remotePlayers).filter(
+          (actor) =>
+            actor.id !== state.playerId &&
+            !actor.isDowned &&
+            actor.hp > 0 &&
+            (actor.team !== state.playerTeam || state.selectedModeId === 'FFA')
+        );
+
+        for (const enemy of enemies) {
+          const enemyTargetPos = new THREE.Vector3(
+            enemy.position[0],
+            enemy.position[1] + 1.35,
+            enemy.position[2]
+          );
+          const distToEnemy = _rayOrigin.distanceTo(enemyTargetPos);
+          if (distToEnemy <= maxWeaponRange && distToEnemy < bestTargetDist) {
+            const testDir = enemyTargetPos.clone().sub(_rayOrigin).normalize();
+            // Line of sight raycast to ensure enemy is not behind a solid wall
+            const losRay = new THREE.Raycaster(_rayOrigin, testDir, 0.1, distToEnemy + 0.5);
+            losRay.camera = camera;
+            const losHits = losRay.intersectObjects(scene.children, true);
+            let occluded = false;
+            for (const h of losHits) {
+              if (h.distance < distToEnemy - 0.4) {
+                let obj: THREE.Object3D | null = h.object;
+                let isWall = false;
+                while (obj) {
+                  if (obj.userData?.isEnvironment || obj.userData?.isWall) {
+                    isWall = true;
+                    break;
+                  }
+                  obj = obj.parent;
+                }
+                if (isWall) {
+                  occluded = true;
+                  break;
+                }
+              }
+            }
+            if (!occluded) {
+              bestTargetDist = distToEnemy;
+              bestTargetDir.copy(testDir);
+              aimbotLocked = true;
+            }
+          }
+        }
+
+        if (aimbotLocked) {
+          _rayDir.copy(bestTargetDir);
+        }
+      }
+
+      if (spreadAmount > 0.0001 && !aimbotLocked) {
         const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
         const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
         const sprAngle = Math.random() * Math.PI * 2;
@@ -266,6 +330,30 @@ export function PlayerController({
 
       for (const hit of hits) {
         if (hit.distance > maxWeaponRange) break;
+
+        // Check if Arthem NPC was shot -> Arthem pulls out a gun and 1-taps player immediately!
+        let checkNpcObj: THREE.Object3D | null = hit.object;
+        let isArthemNpcHit = false;
+        while (checkNpcObj) {
+          if (checkNpcObj.userData?.npc === 'arthem') {
+            isArthemNpcHit = true;
+            break;
+          }
+          checkNpcObj = checkNpcObj.parent;
+        }
+
+        if (isArthemNpcHit) {
+          soundEngine.playShot('sniper');
+          state.applyPlayerDamage(999, {
+            name: 'Arthem (1-Tap Sniper)',
+            team: state.playerTeam === 'alpha' ? 'bravo' : 'alpha',
+            hp: 100,
+            maxHp: 100,
+            weaponClass: 'sniper',
+          });
+          endPoint = [hit.point.x, hit.point.y, hit.point.z];
+          break;
+        }
 
         let obj: THREE.Object3D | null = hit.object;
         let hitZone: HitZone = 'body';
@@ -474,7 +562,36 @@ export function PlayerController({
           return;
         }
 
-        // 4. Mount/dismount nearby Campus E-Scooter (supports 2-player tandem ride!)
+        // 4. Check if near Justus NPC (Smoking Corner)
+        const distToJustus = Math.hypot(
+          footPosRef.current[0] - JUSTUS_NPC_POSITION[0],
+          footPosRef.current[2] - JUSTUS_NPC_POSITION[2]
+        );
+        if (distToJustus <= 2.8 && !store.isEliminated && !store.isDowned) {
+          const res = store.interactWithJustus();
+          if (res.punched) {
+            soundEngine.playDamageTakenSound();
+            damageShakeRef.current = 0.55;
+          }
+          return;
+        }
+
+        // 5. Check if near Lidl Kassierer NPC
+        const distToKassierer = Math.hypot(
+          footPosRef.current[0] - LIDL_KASSIERER_NPC_POSITION[0],
+          footPosRef.current[2] - LIDL_KASSIERER_NPC_POSITION[2]
+        );
+        if (distToKassierer <= 3.2 && !store.isEliminated && !store.isDowned) {
+          const res = store.interactWithLidlKassierer();
+          if (res.arrested) {
+            soundEngine.playDamageTakenSound();
+            footPosRef.current = [PRISON_CELL_POSITION[0], PRISON_CELL_POSITION[1], PRISON_CELL_POSITION[2]];
+            velocityYRef.current = 0;
+          }
+          return;
+        }
+
+        // 6. Mount/dismount nearby Campus E-Scooter (supports 2-player tandem ride!)
         if (store.ridingScooterId || store.nearbyScooterId) {
           _euler.setFromQuaternion(camera.quaternion, 'YXZ');
           const mounted = store.toggleMountScooter(footPosRef.current, _euler.y);
@@ -512,6 +629,12 @@ export function PlayerController({
           soundEngine.playSlideSound();
         }
         return;
+      }
+
+      if (keyUpper === 'H' && !e.repeat) {
+        if (store.playerName.trim().toLowerCase() === 'ilay-dev') {
+          store.toggleDevCheats();
+        }
       }
 
       if (keyUpper === kb.reload) {
@@ -705,6 +828,38 @@ export function PlayerController({
     const nearHausmeister = distToHausmeister <= 2.8;
     if (store.isNearHausmeister !== nearHausmeister) {
       store.setIsNearHausmeister(nearHausmeister);
+    }
+
+    // Check proximity to Justus NPC (Smoking Corner)
+    const distToJustus = Math.hypot(
+      footPosRef.current[0] - JUSTUS_NPC_POSITION[0],
+      footPosRef.current[2] - JUSTUS_NPC_POSITION[2]
+    );
+    const nearJustus = distToJustus <= 2.8;
+    if (store.isNearJustus !== nearJustus) {
+      store.setIsNearJustus(nearJustus);
+    }
+
+    // Check proximity to Lidl Kassierer NPC
+    const distToKassierer = Math.hypot(
+      footPosRef.current[0] - LIDL_KASSIERER_NPC_POSITION[0],
+      footPosRef.current[2] - LIDL_KASSIERER_NPC_POSITION[2]
+    );
+    const nearKassierer = distToKassierer <= 3.2;
+    if (store.isNearLidlKassierer !== nearKassierer) {
+      store.setIsNearLidlKassierer(nearKassierer);
+    }
+
+    // Prison Confinement for Shoplifting: Lock player inside cell for 20 seconds
+    if (store.jailUntil > Date.now()) {
+      footPosRef.current[0] = Math.max(
+        PRISON_CELL_POSITION[0] - 1.8,
+        Math.min(PRISON_CELL_POSITION[0] + 1.8, footPosRef.current[0])
+      );
+      footPosRef.current[2] = Math.max(
+        PRISON_CELL_POSITION[2] - 1.8,
+        Math.min(PRISON_CELL_POSITION[2] + 1.8, footPosRef.current[2])
+      );
     }
 
     // Check if stepped into any active 3m Street Dart Pink Smoke Clouds

@@ -476,6 +476,9 @@ export function InGameHudOverlay() {
   const vapeChargePower = useGameStore((s) => s.vapeChargePower);
   const isNearArthem = useGameStore((s) => s.isNearArthem);
   const isNearHausmeister = useGameStore((s) => s.isNearHausmeister);
+  const isNearJustus = useGameStore((s) => s.isNearJustus);
+  const isNearLidlKassierer = useGameStore((s) => s.isNearLidlKassierer);
+  const jailUntil = useGameStore((s) => s.jailUntil);
   const isDowned = useGameStore((s) => s.isDowned);
   const downedHp = useGameStore((s) => s.downedHp);
   const maxDownedHp = useGameStore((s) => s.maxDownedHp);
@@ -500,6 +503,7 @@ export function InGameHudOverlay() {
   const nowMs = Date.now();
   const stunRemainingSec = Math.max(0, (stunnedUntil - nowMs) / 1000);
   const kongRemainingSec = Math.max(0, (kongStrongUntil - nowMs) / 1000);
+  const jailRemainingSec = Math.max(0, Math.ceil((jailUntil - nowMs) / 1000));
   const mountedScooter = ridingScooterId
     ? scooters.find((sc) => sc.id === ridingScooterId)
     : null;
@@ -627,6 +631,45 @@ export function InGameHudOverlay() {
           </div>
           <div className="text-xs text-white/80 mt-0.5">
             Street Dart Dealer (80% Chance auf Street Dart, 20% Lebensgefahr!)
+          </div>
+        </div>
+      )}
+
+      {/* Justus Proximity Prompt */}
+      {isNearJustus && !isEliminated && !isDowned && (
+        <div className="fixed left-1/2 top-[26%] -translate-x-1/2 z-30 bg-slate-950/95 border-2 border-sky-500 px-6 py-3 rounded-xl text-center shadow-[0_0_30px_rgba(56,189,248,0.4)]">
+          <div className="text-sm font-black text-sky-400 uppercase tracking-wide">
+            💨 [E] MIT JUSTUS SPRECHEN
+          </div>
+          <div className="text-xs text-white/80 mt-0.5">
+            Vape Dealer (80% Vape erhalten, 20% Faustschlag-Gefahr!)
+          </div>
+        </div>
+      )}
+
+      {/* Lidl-Kassierer Proximity Prompt */}
+      {isNearLidlKassierer && !isEliminated && !isDowned && (
+        <div className="fixed left-1/2 top-[26%] -translate-x-1/2 z-30 bg-slate-950/95 border-2 border-yellow-400 px-6 py-3 rounded-xl text-center shadow-[0_0_30px_rgba(250,204,21,0.4)]">
+          <div className="text-sm font-black text-yellow-300 uppercase tracking-wide">
+            🛒 [E] MIT LIDL-KASSIERER SPRECHEN
+          </div>
+          <div className="text-xs text-white/80 mt-0.5">
+            Kong Strong Kasse (80% Speed-Boost, 20% Ladendiebstahl-Gefängnis!)
+          </div>
+        </div>
+      )}
+
+      {/* Prison Detention Overlay Banner */}
+      {jailRemainingSec > 0 && !isEliminated && (
+        <div className="fixed left-1/2 top-[18%] -translate-x-1/2 z-40 bg-red-950/95 border-2 border-red-500 px-8 py-4 rounded-xl text-center shadow-[0_0_40px_rgba(239,68,68,0.6)] animate-pulse">
+          <div className="text-lg font-black text-red-400 uppercase tracking-widest flex items-center justify-center gap-2">
+            <span>🚨</span> ARREST: LADENDIEBSTAHL <span>🚨</span>
+          </div>
+          <div className="text-2xl font-black font-mono-num text-yellow-300 mt-1">
+            {jailRemainingSec}s VERBLEIBEND
+          </div>
+          <div className="text-xs font-bold text-white/80 mt-1">
+            Du wurdest beim Diebstahl erwischt und bist in der Zelle eingesperrt!
           </div>
         </div>
       )}

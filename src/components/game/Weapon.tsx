@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useGameStore } from '../../store/useGameStore';
@@ -1150,7 +1150,6 @@ const ADS_OFFSETS_BY_WEAPON: Record<WeaponId, { x: number; y: number; z: number 
   semi_sniper: { x: 0.0, y: -0.09856, z: -0.53 },
   shotgun: { x: 0.0, y: -0.0538, z: -0.5 },
   lidl_scanner: { x: 0.0, y: -0.075, z: -0.46 },
-  pan: { x: 0.0, y: -0.06, z: -0.42 },
   fist: { x: 0.0, y: -0.08, z: -0.38 },
 };
 

@@ -20,12 +20,15 @@ import {
   type WeaponId,
   type PickupItemType,
   ARTHEM_NPC_POSITION,
+  JUSTUS_NPC_POSITION,
+  LIDL_KASSIERER_NPC_POSITION,
+  PRISON_CELL_POSITION,
   HAUSMEISTER_NPC_POSITION,
   DOMINIC_SCOOTER_ID,
 } from '../../game/rules';
 import { soundEngine } from '../../game/soundEngine';
 import { multiplayerManager } from '../../network/LocalMultiplayer';
-import { WeaponModelGeometry } from './Weapon';
+import { WeaponModelGeometry, LidlLogoDecal } from './Weapon';
 import {
   PlayerController,
   type BulletTracer,
@@ -720,6 +723,9 @@ export function TacticalSoldierMesh({
               roughness={0.4}
             />
           </mesh>
+          {soldierSkin === 'lidl_manager' && (
+            <LidlLogoDecal position={[0, 0.44, 0.186]} rotation={[0, 0, 0]} scale={0.7} />
+          )}
           <mesh position={[0, 0.44, -0.175]} userData={{ hitZone: 'body' }}>
             <boxGeometry args={[0.36, 0.07, 0.02]} />
             <meshStandardMaterial
@@ -858,6 +864,9 @@ export function TacticalSoldierMesh({
               <boxGeometry args={[0.36, 0.18, 0.36]} />
               <meshStandardMaterial color={capColor} roughness={0.55} metalness={0.25} />
             </mesh>
+            {soldierSkin === 'lidl_manager' && (
+              <LidlLogoDecal position={[0, 0.24, 0.188]} rotation={[0, 0, 0]} scale={0.4} />
+            )}
             {/* Side ARC Accessory Rails (Left & Right) */}
             <mesh position={[-0.185, 0.20, 0.02]} rotation={[0, 0, 0.08]}>
               <boxGeometry args={[0.016, 0.042, 0.18]} />
@@ -921,6 +930,7 @@ function ActorBillboardLabel({
   isDowned = false,
   downedHp = 100,
   hasLineOfSight = true,
+  devCheatsActive = false,
 }: {
   name: string;
   team: 'alpha' | 'bravo';
@@ -930,6 +940,7 @@ function ActorBillboardLabel({
   isDowned?: boolean;
   downedHp?: number;
   hasLineOfSight?: boolean;
+  devCheatsActive?: boolean;
 }) {
   // Quantize HP ratio to 40 steps (2.5%) to cache textures efficiently while remaining silky smooth
   const quantizedHp = Math.round(Math.max(0, Math.min(1, hpRatio)) * 40) / 40;
@@ -942,9 +953,8 @@ function ActorBillboardLabel({
     [name, downedHp, isTeammate]
   );
 
-  // Requirement: "Seine Teammates kann man natürlich durch Wände sehen, seine Gegner natürlich nicht."
-  // If enemy is behind a wall or occluded, do not render their nameplate
-  if (!isTeammate && !hasLineOfSight) {
+  // If enemy is behind a wall, do not render nameplate UNLESS secret Dev Wallhack is active
+  if (!isTeammate && !hasLineOfSight && !devCheatsActive) {
     return null;
   }
 
@@ -956,12 +966,12 @@ function ActorBillboardLabel({
     <sprite
       position={[0, posY, 0]}
       scale={scale}
-      renderOrder={isTeammate ? 999 : 1}
+      renderOrder={isTeammate || devCheatsActive ? 999 : 1}
     >
       <spriteMaterial
         map={activeTex}
         transparent
-        depthTest={!isTeammate}
+        depthTest={!isTeammate && !devCheatsActive}
       />
     </sprite>
   );
@@ -1181,6 +1191,7 @@ function RemoteActorsAndBots({
   const selectedModeId = useGameStore((s) => s.selectedModeId);
   const enemyOutline = useGameStore((s) => s.settings.enemyOutline);
   const screen = useGameStore((s) => s.screen);
+  const devCheatsActive = useGameStore((s) => s.devCheatsActive);
   const { camera } = useThree();
   const { world, rapier } = useRapier();
 
@@ -1440,11 +1451,6 @@ function RemoteActorsAndBots({
           botDamage = 0;
           effectiveRange = 5.5;
           tracerColor = '#fff000';
-        } else if (actor.weaponClass === 'pan') {
-          fireInterval = 0.95;
-          botDamage = 55;
-          effectiveRange = 10.0;
-          tracerColor = '#94a3b8';
         }
 
         const lastBotShot = botTimersRef.current[actor.id] || 0;
@@ -1598,6 +1604,7 @@ function RemoteActorsAndBots({
             <TacticalSoldierMesh
               team={actor.team}
               weaponClass={actor.weaponClass}
+              soldierSkin={actor.soldierSkin || 'default'}
               isHit={isRecentlyHit}
               isStunned={isStunned}
               outlineColor={!isTeammate ? enemyOutline : 'None'}
@@ -1610,6 +1617,31 @@ function RemoteActorsAndBots({
               liveActor={actor}
             />
 
+            {/* Secret Dev Wallhack (ESP) box for Ilay-dev through solid walls */}
+            {devCheatsActive && !isTeammate && (
+              <group position={[0, 0.9, 0]}>
+                <mesh renderOrder={999}>
+                  <boxGeometry args={[0.85, 1.85, 0.85]} />
+                  <meshBasicMaterial
+                    color={actor.isDowned ? '#f59e0b' : '#ef4444'}
+                    wireframe={true}
+                    transparent={true}
+                    opacity={0.85}
+                    depthTest={false}
+                  />
+                </mesh>
+                <mesh renderOrder={998}>
+                  <boxGeometry args={[0.82, 1.82, 0.82]} />
+                  <meshBasicMaterial
+                    color="#ef4444"
+                    transparent={true}
+                    opacity={0.12}
+                    depthTest={false}
+                  />
+                </mesh>
+              </group>
+            )}
+
             {screen === 'playing' && (
               <ActorBillboardLabel
                 name={actor.name}
@@ -1620,6 +1652,7 @@ function RemoteActorsAndBots({
                 isDowned={Boolean(actor.isDowned)}
                 downedHp={actor.downedHp ?? 100}
                 hasLineOfSight={losMapRef.current[actor.id] ?? true}
+                devCheatsActive={devCheatsActive}
               />
             )}
           </group>
@@ -2269,7 +2302,7 @@ function ArthemNPC() {
   });
 
   return (
-    <group position={ARTHEM_NPC_POSITION} rotation={[0, -0.4, 0]}>
+    <group position={ARTHEM_NPC_POSITION} rotation={[0, -0.4, 0]} userData={{ npc: 'arthem' }}>
       {screen === 'playing' && (
         <sprite position={[0, 2.2, 0]} scale={[2.2, 0.55, 1]}>
           <spriteMaterial map={badgeTex} transparent depthTest={false} />
@@ -2541,6 +2574,331 @@ function HausmeisterNPC() {
   );
 }
 
+/**
+ * Justus NPC at campus smoking corner (JUSTUS_NPC_POSITION = [-6.5, 0.15, 14.5]).
+ * Scaled 0.5 (half as tall as normal player). Gives Vapes, 20% chance gets aggressive and punches!
+ */
+function JustusNPC() {
+  const headRef = useRef<THREE.Group>(null);
+  const screen = useGameStore((s) => s.screen);
+
+  const badgeTex = useMemo(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 300;
+    canvas.height = 72;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+      ctx.fillRect(6, 8, 288, 56);
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(6, 8, 288, 56);
+      ctx.font = 'bold 18px "Plus Jakarta Sans", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillText('💨 Justus (Halbe Größe) [E]', 150, 32);
+      ctx.font = '12px "Plus Jakarta Sans", sans-serif';
+      ctx.fillStyle = '#cbd5e1';
+      ctx.fillText('Vape Dealer (20% Faustschlag-Gefahr)', 150, 52);
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }, []);
+
+  useFrame((state) => {
+    if (headRef.current) {
+      headRef.current.rotation.y = Math.sin(state.clock.elapsedTime * 1.8) * 0.2;
+    }
+  });
+
+  return (
+    <group position={JUSTUS_NPC_POSITION} rotation={[0, 0.7, 0]} scale={[0.5, 0.5, 0.5]} userData={{ npc: 'justus' }}>
+      {screen === 'playing' && (
+        <sprite position={[0, 2.3, 0]} scale={[2.4, 0.6, 1]}>
+          <spriteMaterial map={badgeTex} transparent depthTest={false} />
+        </sprite>
+      )}
+
+      {/* Baggy Skater Cargo Pants */}
+      <mesh position={[-0.14, 0.42, 0]} castShadow>
+        <boxGeometry args={[0.2, 0.84, 0.24]} />
+        <meshStandardMaterial color="#1e293b" roughness={0.8} />
+      </mesh>
+      <mesh position={[0.14, 0.42, 0]} castShadow>
+        <boxGeometry args={[0.2, 0.84, 0.24]} />
+        <meshStandardMaterial color="#1e293b" roughness={0.8} />
+      </mesh>
+      {/* White Chunky Skate Sneakers */}
+      <mesh position={[-0.14, 0.06, 0.03]} castShadow>
+        <boxGeometry args={[0.22, 0.12, 0.3]} />
+        <meshStandardMaterial color="#f8fafc" roughness={0.5} />
+      </mesh>
+      <mesh position={[0.14, 0.06, 0.03]} castShadow>
+        <boxGeometry args={[0.22, 0.12, 0.3]} />
+        <meshStandardMaterial color="#f8fafc" roughness={0.5} />
+      </mesh>
+
+      {/* Oversized Green Hoodie */}
+      <mesh position={[0, 1.15, 0]} castShadow>
+        <boxGeometry args={[0.56, 0.65, 0.36]} />
+        <meshStandardMaterial color="#047857" roughness={0.7} />
+      </mesh>
+      {/* Hoodie Front Pocket */}
+      <mesh position={[0, 1.05, 0.185]}>
+        <boxGeometry args={[0.3, 0.2, 0.03]} />
+        <meshStandardMaterial color="#065f46" roughness={0.7} />
+      </mesh>
+
+      {/* Arms holding Vape Box Mod */}
+      <group position={[0.3, 1.05, 0.18]} rotation={[0.4, -0.3, 0]}>
+        <mesh position={[0, 0, 0]} castShadow>
+          <boxGeometry args={[0.12, 0.5, 0.14]} />
+          <meshStandardMaterial color="#047857" roughness={0.7} />
+        </mesh>
+        {/* Vape Mod Box in Hand */}
+        <mesh position={[0, -0.22, 0.06]}>
+          <boxGeometry args={[0.07, 0.14, 0.06]} />
+          <meshStandardMaterial color="#0284c7" emissive="#0ea5e9" emissiveIntensity={0.3} metalness={0.6} />
+        </mesh>
+        {/* Vape Drip Tip / Mouthpiece */}
+        <mesh position={[0, -0.13, 0.06]}>
+          <cylinderGeometry args={[0.015, 0.015, 0.05, 12]} />
+          <meshStandardMaterial color="#0f172a" roughness={0.2} metalness={0.8} />
+        </mesh>
+      </group>
+
+      {/* Head with Backwards Snapback Cap */}
+      <group ref={headRef} position={[0, 1.62, 0]}>
+        <mesh castShadow>
+          <sphereGeometry args={[0.16, 16, 16]} />
+          <meshStandardMaterial color="#fed7aa" roughness={0.6} />
+        </mesh>
+        {/* Black Snapback Cap worn backwards */}
+        <mesh position={[0, 0.07, -0.01]}>
+          <sphereGeometry args={[0.17, 16, 16, 0, Math.PI * 2, 0, Math.PI / 1.8]} />
+          <meshStandardMaterial color="#09090b" roughness={0.7} />
+        </mesh>
+        <mesh position={[0, 0.04, -0.18]} rotation={[-0.2, 0, 0]}>
+          <boxGeometry args={[0.2, 0.02, 0.14]} />
+          <meshStandardMaterial color="#09090b" roughness={0.7} />
+        </mesh>
+      </group>
+    </group>
+  );
+}
+
+/**
+ * Lidl Kassierer NPC inside the Lidl supermarket at checkout (LIDL_KASSIERER_NPC_POSITION = [-98.0, 0.15, -6.0]).
+ * Gives Kong Strong (+10s speed boost), 20% caught shoplifting -> 20s prison!
+ */
+function LidlKassiererNPC() {
+  const screen = useGameStore((s) => s.screen);
+
+  const badgeTex = useMemo(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 320;
+    canvas.height = 72;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = 'rgba(0, 80, 170, 0.94)';
+      ctx.fillRect(6, 8, 308, 56);
+      ctx.strokeStyle = '#fff000';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(6, 8, 308, 56);
+      ctx.font = 'bold 18px "Plus Jakarta Sans", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#fff000';
+      ctx.fillText('🛒 Lidl-Kassierer [E]', 160, 32);
+      ctx.font = '12px "Plus Jakarta Sans", sans-serif';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText('Kong Strong (+10s Boost) | 20% Arrest', 160, 52);
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }, []);
+
+  return (
+    <group position={LIDL_KASSIERER_NPC_POSITION} rotation={[0, Math.PI / 2, 0]} userData={{ npc: 'lidl_kassierer' }}>
+      {screen === 'playing' && (
+        <sprite position={[0, 2.3, 0]} scale={[2.6, 0.6, 1]}>
+          <spriteMaterial map={badgeTex} transparent depthTest={false} />
+        </sprite>
+      )}
+
+      {/* Checkout Register Counter Desk */}
+      <mesh position={[0, 0.5, 0.6]} castShadow receiveShadow>
+        <boxGeometry args={[1.6, 1.0, 0.7]} />
+        <meshStandardMaterial color="#334155" roughness={0.4} metalness={0.4} />
+      </mesh>
+      {/* Conveyor Belt Rubber Top */}
+      <mesh position={[0, 1.01, 0.6]}>
+        <boxGeometry args={[1.5, 0.02, 0.6]} />
+        <meshStandardMaterial color="#0f172a" roughness={0.9} />
+      </mesh>
+      {/* Cash Register POS Terminal & Barcode Scanner */}
+      <mesh position={[0.4, 1.15, 0.6]}>
+        <boxGeometry args={[0.3, 0.22, 0.25]} />
+        <meshStandardMaterial color="#1e293b" metalness={0.5} roughness={0.3} />
+      </mesh>
+      {/* Red Laser Scanning Window */}
+      <mesh position={[0.4, 1.15, 0.73]}>
+        <planeGeometry args={[0.15, 0.08]} />
+        <meshBasicMaterial color="#ef4444" />
+      </mesh>
+      {/* 2 Cans of Kong Strong Energy Drink on Display */}
+      <mesh position={[-0.4, 1.12, 0.6]}>
+        <cylinderGeometry args={[0.045, 0.045, 0.2, 16]} />
+        <meshStandardMaterial color="#1d4ed8" emissive="#3b82f6" emissiveIntensity={0.3} metalness={0.8} roughness={0.2} />
+      </mesh>
+      <mesh position={[-0.26, 1.12, 0.6]}>
+        <cylinderGeometry args={[0.045, 0.045, 0.2, 16]} />
+        <meshStandardMaterial color="#1d4ed8" emissive="#3b82f6" emissiveIntensity={0.3} metalness={0.8} roughness={0.2} />
+      </mesh>
+
+      {/* Kassierer Human Body */}
+      {/* Navy Lidl Work Trousers */}
+      <mesh position={[-0.14, 0.42, 0]} castShadow>
+        <boxGeometry args={[0.19, 0.84, 0.23]} />
+        <meshStandardMaterial color="#0050aa" roughness={0.8} />
+      </mesh>
+      <mesh position={[0.14, 0.42, 0]} castShadow>
+        <boxGeometry args={[0.19, 0.84, 0.23]} />
+        <meshStandardMaterial color="#0050aa" roughness={0.8} />
+      </mesh>
+
+      {/* Lidl Blue Poloshirt with Yellow & Red Brand Accents */}
+      <mesh position={[0, 1.15, 0]} castShadow>
+        <boxGeometry args={[0.54, 0.65, 0.32]} />
+        <meshStandardMaterial color="#0050aa" roughness={0.6} />
+      </mesh>
+      {/* Yellow Brand Collar */}
+      <mesh position={[0, 1.42, 0.12]}>
+        <boxGeometry args={[0.26, 0.08, 0.08]} />
+        <meshStandardMaterial color="#fff000" roughness={0.4} />
+      </mesh>
+      {/* Official Lidl Logo on Cashier's Chest */}
+      <LidlLogoDecal position={[0, 1.25, 0.165]} rotation={[0, 0, 0]} scale={0.55} />
+
+      {/* Head with Lidl Staff Visor / Cap */}
+      <group position={[0, 1.62, 0]}>
+        <mesh castShadow>
+          <sphereGeometry args={[0.16, 16, 16]} />
+          <meshStandardMaterial color="#fed7aa" roughness={0.6} />
+        </mesh>
+        {/* Lidl Blue Cap with Yellow Rim */}
+        <mesh position={[0, 0.08, -0.01]}>
+          <cylinderGeometry args={[0.17, 0.18, 0.1, 16]} />
+          <meshStandardMaterial color="#0050aa" roughness={0.6} />
+        </mesh>
+        <mesh position={[0, 0.04, 0.16]} rotation={[0.2, 0, 0]}>
+          <boxGeometry args={[0.22, 0.02, 0.12]} />
+          <meshStandardMaterial color="#fff000" roughness={0.5} />
+        </mesh>
+        <LidlLogoDecal position={[0, 0.1, 0.17]} rotation={[0, 0, 0]} scale={0.28} />
+      </group>
+    </group>
+  );
+}
+
+/**
+ * 3D Prison Cell Structure for Shoplifting Detention (PRISON_CELL_POSITION = [-128.0, 0.15, 8.0]).
+ * Players caught shoplifting are locked here for 20 seconds.
+ */
+function PrisonCellStructure() {
+  return (
+    <group position={PRISON_CELL_POSITION}>
+      {/* Reinforced Concrete Floor Base */}
+      <mesh position={[0, -0.05, 0]} receiveShadow>
+        <boxGeometry args={[4.2, 0.2, 4.2]} />
+        <meshStandardMaterial color="#1e293b" roughness={0.9} />
+      </mesh>
+
+      {/* Steel Mesh Ceiling Plate */}
+      <mesh position={[0, 3.0, 0]} castShadow>
+        <boxGeometry args={[4.2, 0.15, 4.2]} />
+        <meshStandardMaterial color="#0f172a" roughness={0.8} metalness={0.6} />
+      </mesh>
+
+      {/* 4 Heavy Steel Corner Posts */}
+      {[
+        [-2.0, -2.0],
+        [2.0, -2.0],
+        [-2.0, 2.0],
+        [2.0, 2.0],
+      ].map(([px, pz], i) => (
+        <mesh key={i} position={[px, 1.5, pz]} castShadow>
+          <boxGeometry args={[0.18, 3.0, 0.18]} />
+          <meshStandardMaterial color="#090a0f" roughness={0.4} metalness={0.9} />
+        </mesh>
+      ))}
+
+      {/* Perimeter Iron Prison Bars on all 4 walls */}
+      {/* Front & Back Bars */}
+      {[-1.6, -1.2, -0.8, -0.4, 0, 0.4, 0.8, 1.2, 1.6].map((offset) => (
+        <group key={`fb-${offset}`}>
+          <mesh position={[offset, 1.5, -2.0]} castShadow>
+            <cylinderGeometry args={[0.028, 0.028, 3.0, 8]} />
+            <meshStandardMaterial color="#1c202a" roughness={0.3} metalness={0.85} />
+          </mesh>
+          <mesh position={[offset, 1.5, 2.0]} castShadow>
+            <cylinderGeometry args={[0.028, 0.028, 3.0, 8]} />
+            <meshStandardMaterial color="#1c202a" roughness={0.3} metalness={0.85} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* Left & Right Bars */}
+      {[-1.6, -1.2, -0.8, -0.4, 0, 0.4, 0.8, 1.2, 1.6].map((offset) => (
+        <group key={`lr-${offset}`}>
+          <mesh position={[-2.0, 1.5, offset]} castShadow>
+            <cylinderGeometry args={[0.028, 0.028, 3.0, 8]} />
+            <meshStandardMaterial color="#1c202a" roughness={0.3} metalness={0.85} />
+          </mesh>
+          <mesh position={[2.0, 1.5, offset]} castShadow>
+            <cylinderGeometry args={[0.028, 0.028, 3.0, 8]} />
+            <meshStandardMaterial color="#1c202a" roughness={0.3} metalness={0.85} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* Interior Wooden Prison Bench */}
+      <mesh position={[0, 0.45, -1.5]} castShadow receiveShadow>
+        <boxGeometry args={[2.8, 0.08, 0.6]} />
+        <meshStandardMaterial color="#78350f" roughness={0.8} />
+      </mesh>
+      <mesh position={[-1.2, 0.22, -1.5]} castShadow>
+        <boxGeometry args={[0.1, 0.44, 0.5]} />
+        <meshStandardMaterial color="#1e293b" metalness={0.8} />
+      </mesh>
+      <mesh position={[1.2, 0.22, -1.5]} castShadow>
+        <boxGeometry args={[0.1, 0.44, 0.5]} />
+        <meshStandardMaterial color="#1e293b" metalness={0.8} />
+      </mesh>
+
+      {/* Industrial Yellow Overhead Jail Cell Light */}
+      <pointLight position={[0, 2.7, 0]} intensity={1.8} distance={8} color="#f59e0b" />
+      <mesh position={[0, 2.85, 0]}>
+        <cylinderGeometry args={[0.12, 0.12, 0.1, 12]} />
+        <meshStandardMaterial color="#334155" metalness={0.8} />
+      </mesh>
+      <mesh position={[0, 2.75, 0]}>
+        <sphereGeometry args={[0.07, 12, 12]} />
+        <meshStandardMaterial color="#fef08a" emissive="#f59e0b" emissiveIntensity={1.0} />
+      </mesh>
+
+      {/* Prison Identification Sign on front bars */}
+      <group position={[0, 2.3, 2.05]}>
+        <mesh>
+          <boxGeometry args={[2.2, 0.35, 0.04]} />
+          <meshStandardMaterial color="#991b1b" roughness={0.5} />
+        </mesh>
+      </group>
+    </group>
+  );
+}
+
 export function TacticalArenaScene({
   tracers,
   bulletHoles,
@@ -2643,6 +3001,15 @@ export function TacticalArenaScene({
 
       {/* Hausmeister (Janitor) NPC outdoors on campus */}
       <HausmeisterNPC />
+
+      {/* Justus NPC (half-height vape dealer at outdoor smoking corner) */}
+      <JustusNPC />
+
+      {/* Lidl Kassierer NPC behind checkout counter inside Lidl */}
+      <LidlKassiererNPC />
+
+      {/* 3D Shoplifting Detention Prison Cell Structure */}
+      <PrisonCellStructure />
 
       {/* 3D Ballistic Trajectory Arc when charging Vape throw ([Q]) */}
       <VapeTrajectoryArc />

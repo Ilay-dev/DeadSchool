@@ -154,6 +154,8 @@ export interface RemoteActor {
   ads: boolean;
   ridingScooter?: boolean;
   stunnedUntil?: number; // Timestamp until which actor is knocked out by Lidl Scanner
+  soldierSkin?: string;
+  weaponSkin?: string;
   isBot?: boolean;
   botArchetype?: 'rusher' | 'strafer' | 'anchor';
   waypointIndex?: number;
@@ -295,6 +297,21 @@ export interface GameStoreState {
     outcome: 'croissant' | 'confiscated' | 'cooldown';
     message: string;
   };
+
+  // Justus NPC State (Campus Smoking Corner)
+  isNearJustus: boolean;
+  setIsNearJustus: (near: boolean) => void;
+  interactWithJustus: () => { success: boolean; punched: boolean; message: string };
+
+  // Lidl Kassierer NPC & Prison State
+  isNearLidlKassierer: boolean;
+  setIsNearLidlKassierer: (near: boolean) => void;
+  jailUntil: number;
+  interactWithLidlKassierer: () => { success: boolean; arrested: boolean; message: string };
+
+  // Secret Developer Cheats for Ilay-dev ([H] key)
+  devCheatsActive: boolean;
+  toggleDevCheats: () => void;
 
   // Vape Charge & Trajectory Arc State
   vapeChargePower: number;
@@ -480,6 +497,8 @@ export interface GameStoreState {
       ready?: boolean;
       isDowned?: boolean;
       downedHp?: number;
+      soldierSkin?: string;
+      weaponSkin?: string;
     }
   ) => void;
   removeRemotePlayer: (id: string) => void;
@@ -1291,6 +1310,89 @@ export const useGameStore = create<GameStoreState>()(
         };
       },
 
+      isNearJustus: false,
+      setIsNearJustus: (near) => set({ isNearJustus: near }),
+      interactWithJustus: () => {
+        const state = get();
+        if (state.screen !== 'playing' || state.isEliminated || state.isDowned) {
+          return { success: false, punched: false, message: '' };
+        }
+        const isAggressive = Math.random() < 0.20; // 20% chance Justus punches you!
+        if (isAggressive) {
+          state.applyPlayerDamage(20, {
+            name: 'Justus (Faustschlag)',
+            team: state.playerTeam === 'alpha' ? 'bravo' : 'alpha',
+            hp: 100,
+            maxHp: 100,
+            weaponClass: 'fist',
+          });
+          return {
+            success: false,
+            punched: true,
+            message: 'Justus wurde aggressiv und hat dir eine verpasst! (-20 HP)',
+          };
+        }
+        // 80% gives Vape (+1 Vape up to max 5)
+        const nextVapes = Math.min(5, state.vapeCount + 1);
+        set({ vapeCount: nextVapes });
+        soundEngine.playPickupSound('vape_smoke');
+        return {
+          success: true,
+          punched: false,
+          message: 'Justus hat dir eine Vape gegeben! (Q gedrückt halten zum Werfen)',
+        };
+      },
+
+      isNearLidlKassierer: false,
+      setIsNearLidlKassierer: (near) => set({ isNearLidlKassierer: near }),
+      jailUntil: 0,
+      interactWithLidlKassierer: () => {
+        const state = get();
+        if (state.screen !== 'playing' || state.isEliminated || state.isDowned) {
+          return { success: false, arrested: false, message: '' };
+        }
+        if (state.jailUntil > Date.now()) {
+          const remSec = Math.ceil((state.jailUntil - Date.now()) / 1000);
+          return {
+            success: false,
+            arrested: true,
+            message: `Du sitzt noch für ${remSec}s im Gefängnis wegen Ladendiebstahl!`,
+          };
+        }
+        const isCaught = Math.random() < 0.20; // 20% caught shoplifting -> 20s prison!
+        if (isCaught) {
+          const jailExpiry = Date.now() + 20000;
+          set({
+            jailUntil: jailExpiry,
+            ridingScooterId: null,
+          });
+          return {
+            success: false,
+            arrested: true,
+            message: '🚨 LADENDIEBSTAHL! Du wurdest erwischt und für 20 Sekunden inhaftiert!',
+          };
+        }
+        // 80% gives Kong Strong (+10s speed boost)
+        set({
+          kongStrongUntil: Math.max(state.kongStrongUntil, Date.now() + 10000),
+        });
+        soundEngine.playPickupSound('kong_strong');
+        return {
+          success: true,
+          arrested: false,
+          message: '🥤 Kong Strong an der Kasse ergattert! (+10s Speed-Boost)',
+        };
+      },
+
+      devCheatsActive: false,
+      toggleDevCheats: () =>
+        set((s) => {
+          if (s.playerName.trim().toLowerCase() !== 'ilay-dev') {
+            return { devCheatsActive: false };
+          }
+          return { devCheatsActive: !s.devCheatsActive };
+        }),
+
       setMapId: (mapId) => set({ selectedMapId: mapId }),
 
       setModeId: (modeId) =>
@@ -1568,6 +1670,8 @@ export const useGameStore = create<GameStoreState>()(
               isEliminated: true,
               isDowned: false,
               downedHp: 0,
+              vapeCount: 0,
+              streetDartCount: 0,
               eliminatedBy: killerInfo,
               respawnCooldownSec: RESPAWN_COOLDOWN_SEC,
               localDeaths: s.localDeaths + 1,
@@ -1624,6 +1728,8 @@ export const useGameStore = create<GameStoreState>()(
               hp: 0,
               isEliminated: true,
               isDowned: false,
+              vapeCount: 0,
+              streetDartCount: 0,
               respawnCooldownSec: RESPAWN_COOLDOWN_SEC,
               eliminatedBy: killerInfo,
               isAds: false,
@@ -1675,6 +1781,8 @@ export const useGameStore = create<GameStoreState>()(
           respawnCooldownSec: 0,
           matchStartCountdownSec: 0,
           hasTalkedToArthemThisRound: false,
+          vapeCount: 0,
+          streetDartCount: 0,
           droneIntroTimer: 0,
           activeSpawnPoint: safestSpawn,
           respawnNonce: s.respawnNonce + 1,
@@ -1773,8 +1881,7 @@ export const useGameStore = create<GameStoreState>()(
           if (state.screen !== 'playing') return state;
           const nowMs = Date.now();
           const isTimerEnded = state.matchTimeRemaining - dt <= 0;
-          const isScoreLimitReached = state.alphaScore >= 20 || state.bravoScore >= 20;
-          const shouldGameOver = isTimerEnded || isScoreLimitReached;
+          const shouldGameOver = isTimerEnded;
 
           if (shouldGameOver) {
             syncBodyDataset('gameover');
@@ -2081,6 +2188,8 @@ export const useGameStore = create<GameStoreState>()(
                   name: playerName || `Player_${id.slice(0, 4)}`,
                   team: team || (state.playerTeam === 'alpha' ? 'bravo' : 'alpha'),
                   weaponClass,
+                  soldierSkin: meta?.soldierSkin || 'default',
+                  weaponSkin: meta?.weaponSkin || 'default',
                   ready: meta?.ready ?? true,
                   hp: meta?.hp ?? 100,
                   maxHp: meta?.maxHp ?? 100,
@@ -2127,6 +2236,8 @@ export const useGameStore = create<GameStoreState>()(
           existing.sliding = sliding;
           existing.ads = ads;
           existing.weaponClass = nextWeaponClass;
+          if (meta?.soldierSkin) existing.soldierSkin = meta.soldierSkin;
+          if (meta?.weaponSkin) existing.weaponSkin = meta.weaponSkin;
           existing.ridingScooter = ridingScooter;
           existing.isDowned = nextIsDowned;
           existing.downedHp = nextDownedHp;

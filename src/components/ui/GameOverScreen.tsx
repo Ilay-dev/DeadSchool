@@ -76,64 +76,14 @@ export function GameOverScreen() {
 
     const all = [localEntry, ...remList];
 
-    // Guarantee full team rosters like Image 1 (5 players per team)
-    const fallbackAlphaNames = ['Player_1', 'Player_9', 'Player_4', 'Player_11', 'Player_0'];
-    const fallbackBravoNames = ['Player_6', 'Player_5', 'Player_8', 'western sheriff', 'Player_10'];
-    const fallbackWeapons: WeaponId[] = ['assault', 'sniper', 'smg', 'shotgun', 'assault'];
-
     const aList = all.filter((p) => p.team === 'alpha').sort((a, b) => b.score - a.score);
     const bList = all.filter((p) => p.team === 'bravo').sort((a, b) => b.score - a.score);
-
-    while (aList.length < 5) {
-      const idx = aList.length;
-      aList.push({
-        id: `mock_a_${idx}`,
-        name: fallbackAlphaNames[idx] || `Alpha_${idx + 1}`,
-        team: 'alpha',
-        score: Math.max(150, 2200 - idx * 480),
-        kills: Math.max(1, 16 - idx * 4),
-        deaths: 4 + idx * 2,
-        weaponClass: fallbackWeapons[idx % fallbackWeapons.length],
-        ping: 18 + (idx % 2) * 8,
-        isLocal: false,
-      });
-    }
-
-    while (bList.length < 5) {
-      const idx = bList.length;
-      bList.push({
-        id: `mock_b_${idx}`,
-        name: fallbackBravoNames[idx] || `Bravo_${idx + 1}`,
-        team: 'bravo',
-        score: Math.max(200, 3100 - idx * 620),
-        kills: Math.max(2, 17 - idx * 3),
-        deaths: 2 + idx * 2,
-        weaponClass: fallbackWeapons[(idx + 1) % fallbackWeapons.length],
-        ping: 20 + (idx % 3) * 10,
-        isLocal: false,
-      });
-    }
-
     const ffaList = [...all].sort((a, b) => b.score - a.score);
-    while (ffaList.length < 8) {
-      const idx = ffaList.length;
-      ffaList.push({
-        id: `mock_ffa_${idx}`,
-        name: `Player_${idx + 1}`,
-        team: 'alpha',
-        score: Math.max(120, 2600 - idx * 310),
-        kills: Math.max(1, 17 - idx * 2),
-        deaths: 3 + idx * 2,
-        weaponClass: fallbackWeapons[idx % fallbackWeapons.length],
-        ping: 18 + (idx % 3) * 8,
-        isLocal: false,
-      });
-    }
 
     return {
-      alphaRows: aList.slice(0, 5).sort((a, b) => b.score - a.score),
-      bravoRows: bList.slice(0, 5).sort((a, b) => b.score - a.score),
-      ffaRows: ffaList.slice(0, 8).sort((a, b) => b.score - a.score),
+      alphaRows: aList,
+      bravoRows: bList,
+      ffaRows: ffaList,
     };
   }, [playerName, playerTeam, localScore, localKills, localDeaths, selectedClass, remotePlayers]);
 
