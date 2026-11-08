@@ -1190,17 +1190,17 @@ function RemoteActorsAndBots({
         }
 
         const packetAgeSec = Math.min(
-          0.12,
+          0.04,
           Math.max(0, (nowPerf - (actor.lastUpdatePerfMs || nowPerf)) / 1000)
         );
         const vx = actor.velocity?.[0] || 0;
         const vy = actor.velocity?.[1] || 0;
         const vz = actor.velocity?.[2] || 0;
 
-        // Predict current position along velocity vector since last network packet arrived
-        const predX = actor.targetPosition[0] + vx * packetAgeSec;
-        const predY = Math.max(0.08, actor.targetPosition[1] + vy * Math.min(0.05, packetAgeSec));
-        const predZ = actor.targetPosition[2] + vz * packetAgeSec;
+        // Sub-frame dead-reckoning between 60 FPS WebRTC DataChannel ticks
+        const predX = actor.targetPosition[0] + vx * packetAgeSec * 0.5;
+        const predY = Math.max(0.08, actor.targetPosition[1] + vy * packetAgeSec * 0.35);
+        const predZ = actor.targetPosition[2] + vz * packetAgeSec * 0.5;
 
         const distError = Math.hypot(
           predX - rState.pos[0],
@@ -1208,18 +1208,18 @@ function RemoteActorsAndBots({
           predZ - rState.pos[2]
         );
 
-        if (distError > 9.5) {
+        if (distError > 8.5) {
           // Instant snap ONLY on actual respawn/teleport across the arena
           rState.pos[0] = predX;
           rState.pos[1] = predY;
           rState.pos[2] = predZ;
         } else {
-          // Advance along live velocity and smoothly converge any residual drift at 60+ FPS
-          rState.pos[0] += vx * dt * 0.45;
-          rState.pos[2] += vz * dt * 0.45;
-          rState.pos[0] = THREE.MathUtils.damp(rState.pos[0], predX, 20, dt);
-          rState.pos[1] = THREE.MathUtils.damp(rState.pos[1], predY, 24, dt);
-          rState.pos[2] = THREE.MathUtils.damp(rState.pos[2], predZ, 20, dt);
+          // Smooth 60-240 FPS critically-damped tracking with velocity feed-forward
+          rState.pos[0] += vx * dt * 0.35;
+          rState.pos[2] += vz * dt * 0.35;
+          rState.pos[0] = THREE.MathUtils.damp(rState.pos[0], predX, 28, dt);
+          rState.pos[1] = THREE.MathUtils.damp(rState.pos[1], predY, 30, dt);
+          rState.pos[2] = THREE.MathUtils.damp(rState.pos[2], predZ, 28, dt);
         }
 
         // Shortest-arc angular yaw interpolation (prevents 360-degree spin at +/-PI boundary)
