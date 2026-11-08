@@ -52,11 +52,15 @@ class SoundEngine {
    */
   public playShot(weaponId: WeaponId, volumeScale = 1.0) {
     if (weaponId === 'lidl_scanner') {
-      this.playLidlScannerSound();
+      this.playLidlScannerSound(volumeScale);
       return;
     }
     if (weaponId === 'pan') {
-      this.playPanClangSound();
+      this.playPanClangSound(volumeScale);
+      return;
+    }
+    if (weaponId === 'fist') {
+      this.playFistPunchSound(volumeScale);
       return;
     }
 
@@ -274,11 +278,13 @@ class SoundEngine {
 
   /**
    * Supermarket Barcode Scanner "BEEP!" + 4-note Lidl chime
+   * Distance-attenuated so it is not heard across the entire map!
    */
-  public playLidlScannerSound() {
+  public playLidlScannerSound(volumeScale = 1.0) {
+    if (volumeScale <= 0.01) return;
     const ctx = this.getContext();
     if (!ctx) return;
-    const vol = this.getVolumeGain();
+    const vol = this.getVolumeGain() * Math.max(0.0, Math.min(1.5, volumeScale));
     if (vol <= 0.01) return;
 
     const now = ctx.currentTime;
@@ -318,10 +324,11 @@ class SoundEngine {
   /**
    * Resonant heavy cast-iron skillet melee hit clang sound!
    */
-  public playPanClangSound() {
+  public playPanClangSound(volumeScale = 1.0) {
+    if (volumeScale <= 0.01) return;
     const ctx = this.getContext();
     if (!ctx) return;
-    const vol = this.getVolumeGain();
+    const vol = this.getVolumeGain() * Math.max(0.0, Math.min(1.5, volumeScale));
     if (vol <= 0.01) return;
 
     const now = ctx.currentTime;
@@ -339,6 +346,48 @@ class SoundEngine {
       osc.start(now);
       osc.stop(now + 0.65);
     }
+  }
+
+  /**
+   * Punch / fist strike impact sound!
+   */
+  public playFistPunchSound(volumeScale = 1.0) {
+    if (volumeScale <= 0.01) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+    const vol = this.getVolumeGain() * Math.max(0.0, Math.min(1.5, volumeScale));
+    if (vol <= 0.01) return;
+
+    const now = ctx.currentTime;
+    // Punch thump oscillator
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(140, now);
+    osc.frequency.exponentialRampToValueAtTime(45, now + 0.12);
+    g.gain.setValueAtTime(0.35 * vol, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+    osc.connect(g);
+    g.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.15);
+
+    // Punch whip/air whoosh
+    const noise = this.getNoiseBuffer(ctx, 0.2);
+    const src = ctx.createBufferSource();
+    src.buffer = noise;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(600, now);
+    filter.Q.setValueAtTime(2.0, now);
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0.18 * vol, now);
+    ng.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+    src.connect(filter);
+    filter.connect(ng);
+    ng.connect(ctx.destination);
+    src.start(now);
+    src.stop(now + 0.1);
   }
 
   public playPickupSound(itemType: 'vape_smoke' | 'kong_strong' | 'choco_croissant' | 'street_dart') {

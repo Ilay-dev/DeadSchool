@@ -23,8 +23,11 @@ import {
   DOMINIC_SCOOTER_SPEED_MULTIPLIER,
   MAX_MAP_STREET_DARTS,
   STREET_DART_DURATION_MS,
+  STREET_DART_SMOKE_RADIUS,
+  STREET_DART_SMOKE_DURATION_MS,
   ARTHEM_NPC_POSITION,
   ARTHEM_LETHAL_CHANCE,
+  HAUSMEISTER_INTERACTION_COOLDOWN_SEC,
   canFireWeaponOnScooter,
   stepThrownVapeProjectile,
   selectSafestSpawnPoint,
@@ -33,6 +36,7 @@ import {
   type SpawnPoint,
   type PickupItemType,
 } from '../game/rules';
+import { soundEngine } from '../game/soundEngine';
 
 export type ScreenState =
   | 'main_menu'
@@ -164,6 +168,8 @@ export interface MapScooterState {
   position: [number, number, number];
   rotationY: number;
   mountedByPlayerId: string | null;
+  passengerPlayerId?: string | null;
+  passengerPlayerName?: string | null;
   batteryRemainingSec: number; // 20s ride duration (10s for Dominic's scooter)
   isDominic?: boolean;
 }
@@ -256,13 +262,39 @@ export interface GameStoreState {
   localDeaths: number;
   hasSpawnedInMatch: boolean;
   matchStartCountdownSec: number;
+  matchDurationSec: number;
+  setMatchDurationSec: (sec: number) => void;
 
   // Street Dart & Arthem NPC State
+  streetDartCount: number;
   streetDartUntil: number;
+  streetDartChargePower: number;
+  streetDartTrajectoryPoints: [number, number, number][];
+  setStreetDartCharge: (power: number, points: [number, number, number][]) => void;
+  thrownStreetDarts: ThrownVapeState[];
+  streetDartSmokeClouds: SmokeCloudState[];
+  pickupStreetDartToInventory: (id: string) => boolean;
+  throwStreetDart: (
+    origin: [number, number, number],
+    direction: [number, number, number],
+    groundY?: number,
+    force?: number
+  ) => boolean;
+
   hasTalkedToArthemThisRound: boolean;
   isNearArthem: boolean;
   setIsNearArthem: (near: boolean) => void;
   interactWithArthem: () => { success: boolean; lethal: boolean };
+
+  // Hausmeister NPC State
+  isNearHausmeister: boolean;
+  setIsNearHausmeister: (near: boolean) => void;
+  hausmeisterLastInteractedAt: number;
+  interactWithHausmeister: () => {
+    success: boolean;
+    outcome: 'croissant' | 'confiscated' | 'cooldown';
+    message: string;
+  };
 
   // Vape Charge & Trajectory Arc State
   vapeChargePower: number;
@@ -294,6 +326,7 @@ export interface GameStoreState {
   // E-Scooters (rarer on map, max 2 active at once, 20s ride duration)
   scooters: MapScooterState[];
   ridingScooterId: string | null;
+  ridingScooterRole: 'driver' | 'passenger' | null;
   nearbyScooterId: string | null;
   scooterSpawnTimerSec: number;
 
@@ -739,11 +772,25 @@ export const useGameStore = create<GameStoreState>()(
       localKills: 0,
       localDeaths: 0,
       hasSpawnedInMatch: false,
-      matchStartCountdownSec: 5.0,
+      matchStartCountdownSec: 0,
+      matchDurationSec: 300,
+      setMatchDurationSec: (sec) => set({ matchDurationSec: sec, matchTimeRemaining: sec }),
+      streetDartCount: 0,
       streetDartUntil: 0,
+      streetDartChargePower: 0,
+      streetDartTrajectoryPoints: [],
+      setStreetDartCharge: (power, points) =>
+        set({ streetDartChargePower: power, streetDartTrajectoryPoints: points }),
+      thrownStreetDarts: [],
+      streetDartSmokeClouds: [],
       hasTalkedToArthemThisRound: false,
       isNearArthem: false,
       setIsNearArthem: (near) => set({ isNearArthem: near }),
+
+      isNearHausmeister: false,
+      setIsNearHausmeister: (near) => set({ isNearHausmeister: near }),
+      hausmeisterLastInteractedAt: 0,
+
       vapeChargePower: 0,
       vapeTrajectoryPoints: [],
       lobbyCountdownSec: null,
@@ -767,6 +814,7 @@ export const useGameStore = create<GameStoreState>()(
 
       scooters: createInitialScooters(),
       ridingScooterId: null,
+      ridingScooterRole: null,
       nearbyScooterId: null,
       scooterSpawnTimerSec: 0,
 
@@ -978,24 +1026,33 @@ export const useGameStore = create<GameStoreState>()(
       toggleMountScooter: (playerPos, playerRotY) => {
         const state = get();
         if (state.ridingScooterId) {
-          // Dismount current E-Scooter at player's current position
-          const updated = state.scooters.map((sc) =>
-            sc.id === state.ridingScooterId
-              ? {
-                  ...sc,
-                  position: [playerPos[0], playerPos[1], playerPos[2]] as [
-                    number,
-                    number,
-                    number,
-                  ],
-                  rotationY: playerRotY,
-                  mountedByPlayerId: null,
-                }
-              : sc
-          );
+          // Dismount current E-Scooter
+          const role = state.ridingScooterRole || 'driver';
+          const targetId = state.ridingScooterId;
+          const updated = state.scooters.map((sc) => {
+            if (sc.id !== targetId) return sc;
+            if (role === 'passenger') {
+              return {
+                ...sc,
+                passengerPlayerId: null,
+                passengerPlayerName: null,
+              };
+            }
+            return {
+              ...sc,
+              position: [playerPos[0], playerPos[1], playerPos[2]] as [
+                number,
+                number,
+                number,
+              ],
+              rotationY: playerRotY,
+              mountedByPlayerId: null,
+            };
+          });
           set({
             scooters: updated,
             ridingScooterId: null,
+            ridingScooterRole: null,
           });
           return false;
         }
@@ -1003,15 +1060,24 @@ export const useGameStore = create<GameStoreState>()(
         // Find closest available E-Scooter within 2.8m that still has battery (> 0s)
         let closest: MapScooterState | null = null;
         let closestDist = 2.8;
+        let asPassenger = false;
+
         for (const sc of state.scooters) {
-          if (sc.mountedByPlayerId || sc.batteryRemainingSec <= 0) continue;
+          if (sc.batteryRemainingSec <= 0) continue;
           const dist = Math.hypot(
             sc.position[0] - playerPos[0],
             sc.position[2] - playerPos[2]
           );
           if (dist <= closestDist) {
-            closestDist = dist;
-            closest = sc;
+            if (!sc.mountedByPlayerId) {
+              closestDist = dist;
+              closest = sc;
+              asPassenger = false;
+            } else if (!sc.passengerPlayerId && sc.mountedByPlayerId !== state.playerId) {
+              closestDist = dist;
+              closest = sc;
+              asPassenger = true;
+            }
           }
         }
 
@@ -1020,11 +1086,20 @@ export const useGameStore = create<GameStoreState>()(
         const targetId = closest.id;
         set((s) => ({
           ridingScooterId: targetId,
+          ridingScooterRole: asPassenger ? 'passenger' : 'driver',
           isCrouching: false,
           isSliding: false,
           isAds: false,
           scooters: s.scooters.map((sc) =>
-            sc.id === targetId ? { ...sc, mountedByPlayerId: s.playerId } : sc
+            sc.id === targetId
+              ? asPassenger
+                ? {
+                    ...sc,
+                    passengerPlayerId: s.playerId,
+                    passengerPlayerName: s.playerName,
+                  }
+                : { ...sc, mountedByPlayerId: s.playerId }
+              : sc
           ),
         }));
         return true;
@@ -1123,6 +1198,97 @@ export const useGameStore = create<GameStoreState>()(
         }));
 
         return true;
+      },
+
+      pickupStreetDartToInventory: (id) => {
+        const state = get();
+        const item = state.mapPickups.find(
+          (p) => p.id === id && p.type === 'street_dart'
+        );
+        if (!item) return false;
+        set((s) => ({
+          mapPickups: s.mapPickups.filter((p) => p.id !== id),
+          streetDartCount: Math.min(5, s.streetDartCount + 1),
+        }));
+        soundEngine.playPickupSound('street_dart');
+        return true;
+      },
+
+      throwStreetDart: (origin, direction, groundY = 0.15, force = 14.5) => {
+        const state = get();
+        if (
+          state.screen !== 'playing' ||
+          state.isEliminated ||
+          Date.now() < state.stunnedUntil ||
+          state.streetDartCount <= 0
+        ) {
+          return false;
+        }
+
+        const dirLen = Math.hypot(direction[0], direction[1], direction[2]) || 1;
+        const nx = direction[0] / dirLen;
+        const ny = direction[1] / dirLen;
+        const nz = direction[2] / dirLen;
+
+        const thrownSpeed = Math.max(8, Math.min(32, force));
+        const upSpeed = Math.max(3.0, thrownSpeed * 0.28);
+
+        const thrown: ThrownVapeState = {
+          id: `street_dart_proj_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          position: [origin[0] + nx * 0.45, origin[1], origin[2] + nz * 0.45],
+          velocity: [nx * thrownSpeed, ny * thrownSpeed + upSpeed, nz * thrownSpeed],
+          groundY: Math.max(0.12, groundY),
+        };
+
+        set((s) => ({
+          streetDartCount: Math.max(0, s.streetDartCount - 1),
+          thrownStreetDarts: [...s.thrownStreetDarts, thrown],
+        }));
+
+        return true;
+      },
+
+      interactWithHausmeister: () => {
+        const state = get();
+        const now = Date.now();
+        const elapsedSec = (now - state.hausmeisterLastInteractedAt) / 1000;
+        if (elapsedSec < HAUSMEISTER_INTERACTION_COOLDOWN_SEC) {
+          const waitSec = Math.ceil(HAUSMEISTER_INTERACTION_COOLDOWN_SEC - elapsedSec);
+          return {
+            success: false,
+            outcome: 'cooldown' as const,
+            message: `Hausmeister wischt gerade den Boden! Warte noch ${waitSec}s.`,
+          };
+        }
+
+        const isConfiscate = Math.random() < 0.20; // 20% confiscate weapon
+        if (isConfiscate) {
+          set({
+            hausmeisterLastInteractedAt: now,
+            selectedClass: 'fist',
+            ammo: 1,
+            maxAmmo: 1,
+            isReloading: false,
+          });
+          return {
+            success: true,
+            outcome: 'confiscated' as const,
+            message: '⚠️ Der Hausmeister hat deine Waffe konfisziert! "Keine Waffen auf dem Schulhof!" Du kämpfst jetzt mit Fäusten!',
+          };
+        }
+
+        // 80% give Schoko-Croissant (+35 HP)
+        const nextHp = Math.min(100, state.hp + 35);
+        set({
+          hausmeisterLastInteractedAt: now,
+          hp: nextHp,
+        });
+        soundEngine.playPickupSound('choco_croissant');
+        return {
+          success: true,
+          outcome: 'croissant' as const,
+          message: '🥐 Der Hausmeister schenkt dir ein frisches Schoko-Croissant! (+35 HP)',
+        };
       },
 
       setMapId: (mapId) => set({ selectedMapId: mapId }),
@@ -1281,7 +1447,7 @@ export const useGameStore = create<GameStoreState>()(
           downedHp: DOWNED_MAX_HP,
           maxDownedHp: DOWNED_MAX_HP,
           respawnCooldownSec: 0,
-          matchStartCountdownSec: 5.0,
+          matchStartCountdownSec: 0,
           hasSpawnedInMatch: true,
           droneIntroTimer: 0,
           hasTalkedToArthemThisRound: false,
@@ -1507,7 +1673,7 @@ export const useGameStore = create<GameStoreState>()(
           damageFlashAlpha: 0,
           damageVignetteAlpha: 0,
           respawnCooldownSec: 0,
-          matchStartCountdownSec: 5.0,
+          matchStartCountdownSec: 0,
           hasTalkedToArthemThisRound: false,
           droneIntroTimer: 0,
           activeSpawnPoint: safestSpawn,
@@ -1746,6 +1912,43 @@ export const useGameStore = create<GameStoreState>()(
             nextThrownVapes = updatedProjectiles;
           }
 
+          // Step Thrown Street Darts & Spawn 3m Pink Smoke Clouds on Impact
+          let nextThrownStreetDarts = state.thrownStreetDarts;
+          let nextDartSmokeClouds = state.streetDartSmokeClouds.filter(
+            (c) => nowMs < c.expiresAt
+          );
+
+          if (state.thrownStreetDarts.length > 0) {
+            const updatedDartProj: ThrownVapeState[] = [];
+            for (const proj of state.thrownStreetDarts) {
+              const stepped = stepThrownVapeProjectile(
+                proj.position,
+                proj.velocity,
+                dt,
+                proj.groundY
+              );
+              if (stepped.landed) {
+                nextDartSmokeClouds = [
+                  ...nextDartSmokeClouds,
+                  {
+                    id: `dart_smoke_${nowMs}_${Math.random().toString(36).slice(2, 6)}`,
+                    position: stepped.position,
+                    createdAt: nowMs,
+                    expiresAt: nowMs + STREET_DART_SMOKE_DURATION_MS,
+                    radius: STREET_DART_SMOKE_RADIUS,
+                  },
+                ];
+              } else {
+                updatedDartProj.push({
+                  ...proj,
+                  position: stepped.position,
+                  velocity: stepped.velocity,
+                });
+              }
+            }
+            nextThrownStreetDarts = updatedDartProj;
+          }
+
           // 3. Periodically Spawn Ground Pickups (Vapes max 5, Kong Strong max 5, Schoko-Croissants max 5, Street Darts max 5)
           let nextPickupTimer = state.pickupSpawnTimerSec + dt;
           let nextPickups = state.mapPickups;
@@ -1806,6 +2009,8 @@ export const useGameStore = create<GameStoreState>()(
             scooterSpawnTimerSec: nextScooterTimer,
             thrownVapes: nextThrownVapes,
             smokeClouds: nextSmokeClouds,
+            thrownStreetDarts: nextThrownStreetDarts,
+            streetDartSmokeClouds: nextDartSmokeClouds,
             mapPickups: nextPickups,
             pickupSpawnTimerSec: nextPickupTimer,
             damageIndicators: nextDamageIndicators,

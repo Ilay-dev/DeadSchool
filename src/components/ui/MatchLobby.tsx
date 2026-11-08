@@ -17,6 +17,10 @@ export function MatchLobbyScreen() {
   const selectedModeId = useGameStore((s) => s.selectedModeId);
   const setMapId = useGameStore((s) => s.setMapId);
   const setModeId = useGameStore((s) => s.setModeId);
+  const isHost = useGameStore((s) => s.isHost);
+  const setIsHost = useGameStore((s) => s.setIsHost);
+  const matchDurationSec = useGameStore((s) => s.matchDurationSec);
+  const setMatchDurationSec = useGameStore((s) => s.setMatchDurationSec);
   const playerTeam = useGameStore((s) => s.playerTeam);
   const playerName = useGameStore((s) => s.playerName);
   const isReady = useGameStore((s) => s.isReady);
@@ -89,6 +93,7 @@ export function MatchLobbyScreen() {
     const cleaned = joinCodeDraft.trim().toUpperCase();
     if (!cleaned) return;
     setRoomCode(cleaned);
+    setIsHost(false); // Joining an existing room sets player as guest (not host!)
     multiplayerManager.initWebRtcPeer(cleaned, false);
     setStatusBanner(`Verbunden mit Raum-Code ${cleaned}!`);
     setJoinCodeDraft('');
@@ -408,25 +413,32 @@ export function MatchLobbyScreen() {
           </div>
         </div>
 
-        {/* Right Column: Map Grid & 3 Clean Game Modes (TDM 3v3, FFA, BOTS) */}
+        {/* Right Column: Host-Restricted Map, Spielmodus & Match-Dauer Selectors */}
         <aside className="w-64 flex flex-col items-center space-y-4">
           <div className="w-full text-center">
-            <h3 className="text-[22px] font-extrabold text-white mb-2">Map</h3>
-            <div className="grid grid-cols-2 gap-2.5">
+            <h3 className="text-[20px] font-extrabold text-white mb-1 flex items-center justify-center gap-1.5">
+              <span>Map</span>
+              {!isHost && <span className="text-[11px] text-amber-400 font-bold">(Nur Host)</span>}
+            </h3>
+            <div className="grid grid-cols-2 gap-2">
               {MAPS.map((m) => {
                 const selected = m.id === selectedMapId;
                 return (
                   <button
                     key={m.id}
                     type="button"
+                    disabled={!isHost}
                     aria-label={`Select map ${m.name}`}
                     onClick={() => {
+                      if (!isHost) return;
                       setMapId(m.id);
                       multiplayerManager.sendLobbySync();
                     }}
-                    className={`h-14 relative overflow-hidden transition-all cursor-pointer ${
+                    className={`h-12 relative overflow-hidden transition-all ${
+                      !isHost ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                    } ${
                       selected
-                        ? 'ring-3 ring-white rounded-sm scale-[1.03]'
+                        ? 'ring-3 ring-white rounded-sm scale-[1.02]'
                         : 'opacity-70 hover:opacity-100'
                     }`}
                     style={{
@@ -443,29 +455,74 @@ export function MatchLobbyScreen() {
           </div>
 
           <div className="w-full text-center">
-            <h3 className="text-[22px] font-extrabold text-white mb-2">Spielmodus</h3>
-            <div className="flex flex-col gap-2">
+            <h3 className="text-[20px] font-extrabold text-white mb-1 flex items-center justify-center gap-1.5">
+              <span>Spielmodus</span>
+              {!isHost && <span className="text-[11px] text-amber-400 font-bold">(Nur Host)</span>}
+            </h3>
+            <div className="flex flex-col gap-1.5">
               {MODES.map((mode) => {
                 const selected = mode === selectedModeId;
                 return (
                   <button
                     key={mode}
                     type="button"
+                    disabled={!isHost}
                     data-testid={`lobby-mode-${mode}`}
                     onClick={() => {
+                      if (!isHost) return;
                       setModeId(mode);
                       multiplayerManager.sendLobbySync();
                     }}
-                    className={`py-2.5 px-3 text-left transition-all cursor-pointer flex items-center justify-between ${
+                    className={`py-2 px-3 text-left transition-all flex items-center justify-between ${
+                      !isHost ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                    } ${
                       selected
                         ? 'bg-[#2b7fff] text-white ring-2 ring-white rounded-xs'
                         : 'bg-black/60 text-white/70 hover:text-white'
                     }`}
                   >
-                    <span className="text-[16px] font-extrabold">{mode}</span>
+                    <span className="text-[15px] font-extrabold">{mode}</span>
                     <span className="text-[11px] font-bold text-white/85">
                       {MODE_LABELS[mode]}
                     </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Match-Dauer Selector (1 Min, 5 Min, 15 Min) - Host Only */}
+          <div className="w-full text-center">
+            <h3 className="text-[20px] font-extrabold text-white mb-1 flex items-center justify-center gap-1.5">
+              <span>Match-Dauer</span>
+              {!isHost && <span className="text-[11px] text-amber-400 font-bold">(Nur Host)</span>}
+            </h3>
+            <div className="grid grid-cols-3 gap-1.5">
+              {[
+                { sec: 60, label: '1 Min' },
+                { sec: 300, label: '5 Min' },
+                { sec: 900, label: '15 Min' },
+              ].map(({ sec, label }) => {
+                const selected = matchDurationSec === sec;
+                return (
+                  <button
+                    key={sec}
+                    type="button"
+                    disabled={!isHost}
+                    onClick={() => {
+                      if (!isHost) return;
+                      setMatchDurationSec(sec);
+                      multiplayerManager.sendLobbySync();
+                    }}
+                    className={`py-2 text-center text-xs font-black uppercase transition-all ${
+                      !isHost ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                    } ${
+                      selected
+                        ? 'bg-amber-500 text-black ring-2 ring-white rounded-xs'
+                        : 'bg-black/60 text-white/70 hover:text-white border border-white/20'
+                    }`}
+                  >
+                    {label}
                   </button>
                 );
               })}

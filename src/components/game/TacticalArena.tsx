@@ -20,6 +20,7 @@ import {
   type WeaponId,
   type PickupItemType,
   ARTHEM_NPC_POSITION,
+  HAUSMEISTER_NPC_POSITION,
   DOMINIC_SCOOTER_ID,
 } from '../../game/rules';
 import { soundEngine } from '../../game/soundEngine';
@@ -1207,8 +1208,12 @@ function RemoteActorsAndBots({
         camera.position.y - ev.muzzlePos[1],
         camera.position.z - ev.muzzlePos[2]
       );
-      const volScale = Math.max(0.12, Math.min(1.0, 1 - dist / 70));
-      soundEngine.playShot(ev.weaponClass, volScale);
+      if (!(ev.weaponClass === 'lidl_scanner' && dist > 40)) {
+        const volScale = Math.max(0.0, Math.min(1.0, 1 - dist / (ev.weaponClass === 'lidl_scanner' ? 40 : 70)));
+        if (volScale > 0.01) {
+          soundEngine.playShot(ev.weaponClass, volScale);
+        }
+      }
 
       remoteFlashesRef.current[ev.playerId] = Date.now() + 65;
 
@@ -1451,7 +1456,15 @@ function RemoteActorsAndBots({
           elapsed - lastBotShot > fireInterval
         ) {
           botTimersRef.current[actor.id] = elapsed;
-          soundEngine.playShot(actor.weaponClass);
+          if (!(actor.weaponClass === 'lidl_scanner' && distToPlayer > 40)) {
+            const botVolScale = Math.max(
+              0.0,
+              Math.min(1.0, 1 - distToPlayer / (actor.weaponClass === 'lidl_scanner' ? 40 : 70))
+            );
+            if (botVolScale > 0.01) {
+              soundEngine.playShot(actor.weaponClass, botVolScale);
+            }
+          }
 
           if (onSpawnTracer) {
             onSpawnTracer(
@@ -2320,6 +2333,214 @@ function ArthemNPC() {
   );
 }
 
+/**
+ * 3D Trajectory Arc for Charged Street Dart Throw ([E])
+ */
+function StreetDartTrajectoryArc() {
+  const points = useGameStore((s) => s.streetDartTrajectoryPoints);
+  const lineObj = useMemo(() => {
+    if (!points || points.length < 2) return null;
+    const v3s = points.map((p) => new THREE.Vector3(p[0], p[1], p[2]));
+    const geo = new THREE.BufferGeometry().setFromPoints(v3s);
+    const mat = new THREE.LineBasicMaterial({
+      color: 0xec4899,
+      linewidth: 3,
+      transparent: true,
+      opacity: 0.85,
+    });
+    return new THREE.Line(geo, mat);
+  }, [points]);
+
+  if (!points || points.length < 2 || !lineObj) return null;
+  const lastPoint = points[points.length - 1];
+
+  return (
+    <group>
+      <primitive object={lineObj} />
+      <mesh
+        position={[lastPoint[0], lastPoint[1] + 0.05, lastPoint[2]]}
+        rotation={[-Math.PI / 2, 0, 0]}
+      >
+        <ringGeometry args={[0.35, 0.55, 24]} />
+        <meshBasicMaterial
+          color="#ec4899"
+          side={THREE.DoubleSide}
+          transparent
+          opacity={0.8}
+        />
+      </mesh>
+    </group>
+  );
+}
+
+/**
+ * 3-Meter Pink Psychedelic Smoke Clouds spawned by Street Dart impacts!
+ */
+function StreetDartSmokeCloudsLayer() {
+  const dartSmokeClouds = useGameStore((s) => s.streetDartSmokeClouds);
+
+  return (
+    <>
+      {dartSmokeClouds.map((cloud: SmokeCloudState) => (
+        <group key={cloud.id} position={cloud.position}>
+          {/* Dropped Street Dart Syringe at epicenter */}
+          <group position={[0, 0.08, 0]} rotation={[0.4, 0.6, Math.PI / 2]}>
+            <mesh>
+              <cylinderGeometry args={[0.025, 0.025, 0.22, 12]} />
+              <meshStandardMaterial color="#f472b6" roughness={0.2} transparent opacity={0.8} />
+            </mesh>
+            <mesh position={[0, 0.12, 0]}>
+              <cylinderGeometry args={[0.003, 0.003, 0.08, 8]} />
+              <meshStandardMaterial color="#e2e8f0" metalness={0.9} roughness={0.2} />
+            </mesh>
+          </group>
+
+          {/* 3m Volumetric Pink Psychedelic Smoke Puffs */}
+          {[
+            [0, 0.8, 0, 1.4],
+            [-0.9, 0.6, 0.8, 1.2],
+            [0.9, 0.6, -0.7, 1.2],
+            [-0.7, 0.7, -0.9, 1.1],
+            [0.8, 0.8, 0.8, 1.2],
+            [0, 1.5, 0, 1.1],
+          ].map(([ox, oy, oz, rad], idx) => (
+            <mesh key={idx} position={[ox, oy, oz]}>
+              <icosahedronGeometry args={[rad, 2]} />
+              <meshStandardMaterial
+                color={idx % 2 === 0 ? '#f43f5e' : '#ec4899'}
+                roughness={0.9}
+                metalness={0.0}
+                transparent
+                opacity={0.65}
+                depthWrite={false}
+              />
+            </mesh>
+          ))}
+        </group>
+      ))}
+    </>
+  );
+}
+
+/**
+ * Hausmeister (Janitor) NPC outdoors on campus ground level (Spawn point: HAUSMEISTER_NPC_POSITION).
+ * Interacting via [E]: 80% gives Schoko-Croissant (+HP), 20% confiscates weapon forcing fists!
+ */
+function HausmeisterNPC() {
+  const mopRef = useRef<THREE.Group>(null);
+  const screen = useGameStore((s) => s.screen);
+
+  const badgeTex = useMemo(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 300;
+    canvas.height = 72;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+      ctx.fillRect(6, 8, 288, 56);
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(6, 8, 288, 56);
+      ctx.font = 'bold 18px "Plus Jakarta Sans", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillText('🧹 Hausmeister [E]', 150, 32);
+      ctx.font = '12px "Plus Jakarta Sans", sans-serif';
+      ctx.fillStyle = '#cbd5e1';
+      ctx.fillText('Ordnungsdienst (Croissant / Faust)', 150, 52);
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }, []);
+
+  useFrame((state) => {
+    if (mopRef.current) {
+      mopRef.current.rotation.z = -0.3 + Math.sin(state.clock.elapsedTime * 2.2) * 0.12;
+    }
+  });
+
+  return (
+    <group position={HAUSMEISTER_NPC_POSITION} rotation={[0, 0.85, 0]}>
+      {screen === 'playing' && (
+        <sprite position={[0, 2.2, 0]} scale={[2.2, 0.55, 1]}>
+          <spriteMaterial map={badgeTex} transparent depthTest={false} />
+        </sprite>
+      )}
+
+      {/* Safety Work Boots */}
+      <mesh position={[-0.14, 0.06, 0.04]} castShadow>
+        <boxGeometry args={[0.2, 0.12, 0.3]} />
+        <meshStandardMaterial color="#1e293b" roughness={0.6} />
+      </mesh>
+      <mesh position={[0.14, 0.06, 0.04]} castShadow>
+        <boxGeometry args={[0.2, 0.12, 0.3]} />
+        <meshStandardMaterial color="#1e293b" roughness={0.6} />
+      </mesh>
+
+      {/* Work Trousers */}
+      <mesh position={[-0.14, 0.42, 0]} castShadow>
+        <boxGeometry args={[0.19, 0.82, 0.23]} />
+        <meshStandardMaterial color="#475569" roughness={0.8} />
+      </mesh>
+      <mesh position={[0.14, 0.42, 0]} castShadow>
+        <boxGeometry args={[0.19, 0.82, 0.23]} />
+        <meshStandardMaterial color="#475569" roughness={0.8} />
+      </mesh>
+
+      {/* Janitor Blue Overalls / Apron */}
+      <mesh position={[0, 1.15, 0]} castShadow>
+        <boxGeometry args={[0.54, 0.65, 0.32]} />
+        <meshStandardMaterial color="#1e40af" roughness={0.7} />
+      </mesh>
+      {/* Front Pocket with Pens */}
+      <mesh position={[0.12, 1.25, 0.165]}>
+        <boxGeometry args={[0.12, 0.14, 0.015]} />
+        <meshStandardMaterial color="#1d4ed8" roughness={0.6} />
+      </mesh>
+
+      {/* Heavy Janitor Brass Keyring on Belt */}
+      <group position={[-0.24, 0.85, 0.12]}>
+        <mesh rotation={[0, Math.PI / 2, 0]}>
+          <torusGeometry args={[0.04, 0.008, 8, 16]} />
+          <meshStandardMaterial color="#f59e0b" metalness={0.9} roughness={0.2} />
+        </mesh>
+      </group>
+
+      {/* Arms holding Sweeping Broom / Mop */}
+      <group ref={mopRef} position={[0.22, 1.05, 0.22]} rotation={[0.2, 0.1, -0.3]}>
+        {/* Long Wooden Broom Handle */}
+        <mesh position={[0, 0, -0.1]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+          <cylinderGeometry args={[0.016, 0.016, 1.45, 12]} />
+          <meshStandardMaterial color="#d97706" roughness={0.6} />
+        </mesh>
+        {/* Broom Sweeper Brush Head on Floor */}
+        <mesh position={[0, -0.68, -0.1]}>
+          <boxGeometry args={[0.34, 0.08, 0.1]} />
+          <meshStandardMaterial color="#78350f" roughness={0.8} />
+        </mesh>
+      </group>
+
+      {/* Head with Custodian Cap */}
+      <group position={[0, 1.62, 0]}>
+        <mesh castShadow>
+          <sphereGeometry args={[0.16, 16, 16]} />
+          <meshStandardMaterial color="#fed7aa" roughness={0.6} />
+        </mesh>
+        {/* Navy Peaked Work Cap */}
+        <mesh position={[0, 0.08, -0.01]}>
+          <cylinderGeometry args={[0.17, 0.18, 0.11, 16]} />
+          <meshStandardMaterial color="#1e3a8a" roughness={0.7} />
+        </mesh>
+        <mesh position={[0, 0.04, 0.16]} rotation={[0.25, 0, 0]}>
+          <boxGeometry args={[0.22, 0.02, 0.12]} />
+          <meshStandardMaterial color="#172554" roughness={0.5} />
+        </mesh>
+      </group>
+    </group>
+  );
+}
+
 export function TacticalArenaScene({
   tracers,
   bulletHoles,
@@ -2420,8 +2641,17 @@ export function TacticalArenaScene({
       {/* Arthem NPC inside the school corridor */}
       <ArthemNPC />
 
+      {/* Hausmeister (Janitor) NPC outdoors on campus */}
+      <HausmeisterNPC />
+
       {/* 3D Ballistic Trajectory Arc when charging Vape throw ([Q]) */}
       <VapeTrajectoryArc />
+
+      {/* 3D Ballistic Trajectory Arc when charging Street Dart throw ([E]) */}
+      <StreetDartTrajectoryArc />
+
+      {/* 3-Meter Pink Psychedelic Street Dart Smoke Clouds */}
+      <StreetDartSmokeCloudsLayer />
 
       {/* Persistent 3D Bullet Hole Decals on Walls & Objects */}
       <BulletHoleDecals decals={bulletHoles} />

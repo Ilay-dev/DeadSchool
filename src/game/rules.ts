@@ -5,14 +5,15 @@ export type WeaponId =
   | 'shotgun'
   | 'semi_sniper'
   | 'lidl_scanner'
-  | 'pan';
+  | 'pan'
+  | 'fist';
 
 export type HitZone = 'head' | 'body' | 'legs';
 
 export interface WeaponStats {
   id: WeaponId;
   name: string;
-  rangeLabel: 'Close' | 'Medium' | 'Long' | '4m Stun' | '10m Melee';
+  rangeLabel: 'Close' | 'Medium' | 'Long' | '4m Stun' | '10m Melee' | '2m Melee';
   maxRange: number; // maximum effective raycast range in meters
   ammo: number;
   maxAmmo: number;
@@ -203,13 +204,13 @@ export const WEAPON_CLASSES: Record<WeaponId, WeaponStats> = {
   pan: {
     id: 'pan',
     name: 'Bratpfanne',
-    rangeLabel: '10m Melee',
-    maxRange: 10.0, // Max 10m range
+    rangeLabel: '2m Melee',
+    maxRange: 2.0, // Max 2m melee range!
     ammo: 1,
     maxAmmo: 1,
     health: 100,
     reloadTime: 0.1,
-    fireRateMs: 420,
+    fireRateMs: 950, // Higher cooldown so it cannot be spammed!
     damage: 55, // 55 damage melee hit
     stunDurationMs: 0,
     headshotMultiplier: 1.5,
@@ -226,6 +227,33 @@ export const WEAPON_CLASSES: Record<WeaponId, WeaponStats> = {
     primaryColor: '#1c1e22',
     secondaryColor: '#363a42',
     accentColor: '#0f1114',
+  },
+  fist: {
+    id: 'fist',
+    name: 'Fäuste',
+    rangeLabel: 'Close',
+    maxRange: 1.8,
+    ammo: 1,
+    maxAmmo: 1,
+    health: 100,
+    reloadTime: 0.1,
+    fireRateMs: 380,
+    damage: 5,
+    stunDurationMs: 0,
+    headshotMultiplier: 1.2,
+    bodyMultiplier: 1.0,
+    legsMultiplier: 0.8,
+    recoilPitch: 0.015,
+    recoilYaw: 0.01,
+    recoilKickback: 0.02,
+    adsFov: 78,
+    spread: 0.005,
+    adsSpread: 0.005,
+    pellets: 1,
+    automatic: false,
+    primaryColor: '#ef4444',
+    secondaryColor: '#1f2937',
+    accentColor: '#f97316',
   },
 };
 
@@ -412,13 +440,21 @@ export const MAX_MAP_VAPES = 5;
 export const MAX_MAP_KONG_STRONG = 5;
 export const MAX_MAP_CROISSANTS = 5;
 export const MAX_MAP_STREET_DARTS = 5;
-export const STREET_DART_DURATION_MS = 15000; // 15s psychedelic trip
+export const STREET_DART_DURATION_MS = 5000; // 5s psychedelic trip
+export const STREET_DART_SMOKE_RADIUS = 3.0; // 3m pink smoke cloud radius
+export const STREET_DART_SMOKE_DURATION_MS = 8000; // 8s smoke cloud duration
 export const VAPE_SMOKE_RADIUS = 10.5; // Massive expanding smoke ball (covers wide plaza)
 export const VAPE_SMOKE_DURATION_MS = 12000;
 
 // Arthem NPC inside the school (spawns in school hallway / atrium)
 export const ARTHEM_NPC_POSITION: [number, number, number] = [1.2, 0.15, -13.5];
 export const ARTHEM_LETHAL_CHANCE = 0.20; // 20% chance of death, 80% street dart
+
+// Hausmeister (Janitor) NPC outdoors on ground level
+export const HAUSMEISTER_NPC_POSITION: [number, number, number] = [-14.5, 0.15, 8.5];
+export const HAUSMEISTER_INTERACTION_COOLDOWN_SEC = 20.0; // 20s cooldown per player
+
+export const MATCH_DURATION_OPTIONS = [60, 300, 900] as const; // 1 Min, 5 Min, 15 Min
 
 export const CAMPUS_PICKUP_SPAWN_POINTS: [number, number, number][] = [
   // Lidl Supermarket Sector (West)

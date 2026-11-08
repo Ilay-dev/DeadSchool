@@ -18,6 +18,9 @@ import {
   computeSlideStep,
   DOMINIC_SCOOTER_SPEED_MULTIPLIER,
   ARTHEM_NPC_POSITION,
+  HAUSMEISTER_NPC_POSITION,
+  STREET_DART_DURATION_MS,
+  STREET_DART_SMOKE_RADIUS,
   type AABB,
   type HitZone,
 } from '../../game/rules';
@@ -96,6 +99,8 @@ export function PlayerController({
   const damageShakeRef = useRef(0);
   const isChargingVapeRef = useRef<boolean>(false);
   const vapeChargeStartPerfRef = useRef<number>(0);
+  const isChargingStreetDartRef = useRef<boolean>(false);
+  const streetDartChargeStartPerfRef = useRef<number>(0);
 
   const hp = useGameStore((s) => s.hp);
   const prevHpRef = useRef(hp);
@@ -236,10 +241,15 @@ export function PlayerController({
     for (let p = 0; p < stats.pellets; p++) {
       _rayOrigin.copy(camera.position);
       camera.getWorldDirection(_rayDir);
-      _rayDir.x += (Math.random() - 0.5) * spreadAmount;
-      _rayDir.y += (Math.random() - 0.5) * spreadAmount;
-      _rayDir.z += (Math.random() - 0.5) * spreadAmount;
-      _rayDir.normalize();
+      if (spreadAmount > 0.0001) {
+        const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+        const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+        const sprAngle = Math.random() * Math.PI * 2;
+        const sprRadius = Math.sqrt(Math.random()) * spreadAmount;
+        _rayDir.addScaledVector(camRight, Math.cos(sprAngle) * sprRadius);
+        _rayDir.addScaledVector(camUp, Math.sin(sprAngle) * sprRadius);
+        _rayDir.normalize();
+      }
 
       raycaster.set(_rayOrigin, _rayDir);
       raycaster.far = maxWeaponRange;
@@ -413,14 +423,50 @@ export function PlayerController({
         return;
       }
 
-      // Press [E] to interact with Arthem NPC or mount/dismount nearby Campus E-Scooter
+      // Press or hold [E] for context interactions: Pick up Street Dart, Hausmeister, Arthem, E-Scooter, or Throw Street Dart
       if (keyUpper === 'E' && !e.repeat) {
-        // 1. Check if near Arthem NPC inside the school building
+        // 1. Pick up ground Street Dart to inventory if nearby (without tripping!)
+        const nearbyDart = store.mapPickups.find(
+          (p) =>
+            p.type === 'street_dart' &&
+            Math.hypot(
+              footPosRef.current[0] - p.position[0],
+              footPosRef.current[2] - p.position[2]
+            ) <= 2.5
+        );
+        if (nearbyDart) {
+          store.pickupStreetDartToInventory(nearbyDart.id);
+          return;
+        }
+
+        // 2. Check if near Hausmeister NPC outdoors
+        const distToHausmeister = Math.hypot(
+          footPosRef.current[0] - HAUSMEISTER_NPC_POSITION[0],
+          footPosRef.current[2] - HAUSMEISTER_NPC_POSITION[2]
+        );
+        if (
+          distToHausmeister <= 2.8 &&
+          !store.isEliminated &&
+          !store.isDowned
+        ) {
+          const res = store.interactWithHausmeister();
+          if (res.outcome === 'confiscated') {
+            soundEngine.playDamageTakenSound();
+          }
+          return;
+        }
+
+        // 3. Check if near Arthem NPC inside the school building
         const distToArthem = Math.hypot(
           footPosRef.current[0] - ARTHEM_NPC_POSITION[0],
           footPosRef.current[2] - ARTHEM_NPC_POSITION[2]
         );
-        if (distToArthem <= 2.8 && !store.hasTalkedToArthemThisRound && !store.isEliminated && !store.isDowned) {
+        if (
+          distToArthem <= 2.8 &&
+          !store.hasTalkedToArthemThisRound &&
+          !store.isEliminated &&
+          !store.isDowned
+        ) {
           const res = store.interactWithArthem();
           if (res.lethal) {
             soundEngine.playDamageTakenSound();
@@ -428,11 +474,18 @@ export function PlayerController({
           return;
         }
 
-        // 2. Mount/dismount nearby Campus E-Scooter
+        // 4. Mount/dismount nearby Campus E-Scooter (supports 2-player tandem ride!)
         if (store.ridingScooterId || store.nearbyScooterId) {
           _euler.setFromQuaternion(camera.quaternion, 'YXZ');
           const mounted = store.toggleMountScooter(footPosRef.current, _euler.y);
           soundEngine.playScooterMountSound(mounted);
+          return;
+        }
+
+        // 5. If holding Street Darts in inventory, start charging throw power!
+        if (store.streetDartCount > 0 && !store.isDowned && !store.ridingScooterId) {
+          isChargingStreetDartRef.current = true;
+          streetDartChargeStartPerfRef.current = performance.now();
           return;
         }
       }
@@ -505,6 +558,26 @@ export function PlayerController({
           soundEngine.playVapeThrowAndPuffSound();
         }
         store.setVapeCharge(0, []);
+      }
+
+      if (keyUpper === 'E' && isChargingStreetDartRef.current) {
+        isChargingStreetDartRef.current = false;
+        const chargeRatio = Math.min(
+          1.0,
+          (performance.now() - streetDartChargeStartPerfRef.current) / 1000
+        );
+        const throwForce = 9.0 + chargeRatio * 20.0;
+        camera.getWorldDirection(_rayDir);
+        const didThrow = store.throwStreetDart(
+          [camera.position.x, camera.position.y - 0.1, camera.position.z],
+          [_rayDir.x, _rayDir.y, _rayDir.z],
+          footPosRef.current[1] + 0.15,
+          throwForce
+        );
+        if (didThrow) {
+          soundEngine.playVapeThrowAndPuffSound();
+        }
+        store.setStreetDartCharge(0, []);
       }
 
       if (e.key === 'Control' || keyUpper === 'C') {
@@ -622,6 +695,32 @@ export function PlayerController({
     const nearArthem = distToArthem <= 2.8 && !store.hasTalkedToArthemThisRound;
     if (store.isNearArthem !== nearArthem) {
       store.setIsNearArthem(nearArthem);
+    }
+
+    // Check proximity to Hausmeister NPC outdoors
+    const distToHausmeister = Math.hypot(
+      footPosRef.current[0] - HAUSMEISTER_NPC_POSITION[0],
+      footPosRef.current[2] - HAUSMEISTER_NPC_POSITION[2]
+    );
+    const nearHausmeister = distToHausmeister <= 2.8;
+    if (store.isNearHausmeister !== nearHausmeister) {
+      store.setIsNearHausmeister(nearHausmeister);
+    }
+
+    // Check if stepped into any active 3m Street Dart Pink Smoke Clouds
+    const nowCheckMs = Date.now();
+    for (const cloud of store.streetDartSmokeClouds) {
+      if (nowCheckMs < cloud.expiresAt) {
+        const dCloud = Math.hypot(
+          footPosRef.current[0] - cloud.position[0],
+          footPosRef.current[2] - cloud.position[2]
+        );
+        if (dCloud <= cloud.radius && Math.abs(footPosRef.current[1] - cloud.position[1]) < 2.5) {
+          if (store.streetDartUntil < nowCheckMs + 3500) {
+            useGameStore.setState({ streetDartUntil: nowCheckMs + STREET_DART_DURATION_MS });
+          }
+        }
+      }
     }
 
     // If eliminated or stunned by Lidl Barcode Scanner (10s), freeze player movement & firing
@@ -1043,14 +1142,58 @@ export function PlayerController({
       store.setVapeCharge(chargeRatio, trajPoints);
     }
 
+    // Compute ballistic trajectory for charged Street Dart throw [E]
+    if (isChargingStreetDartRef.current && store.streetDartCount > 0 && !store.isDowned) {
+      const chargeRatio = Math.min(
+        1.0,
+        (performance.now() - streetDartChargeStartPerfRef.current) / 1000
+      );
+      const throwForce = 9.0 + chargeRatio * 20.0;
+      camera.getWorldDirection(_rayDir);
+
+      const trajPoints: [number, number, number][] = [];
+      const originX = camera.position.x;
+      const originY = camera.position.y - 0.1;
+      const originZ = camera.position.z;
+      const vx = _rayDir.x * throwForce;
+      const vy = _rayDir.y * throwForce + 2.5;
+      const vz = _rayDir.z * throwForce;
+      const gravity = 16.0;
+      const groundFloorY = footPosRef.current[1] + 0.15;
+
+      for (let s = 0; s <= 30; s++) {
+        const t = s * 0.04;
+        const px = originX + vx * t;
+        const py = Math.max(groundFloorY, originY + vy * t - 0.5 * gravity * t * t);
+        const pz = originZ + vz * t;
+        trajPoints.push([px, py, pz]);
+        if (py <= groundFloorY && s > 2) break;
+      }
+      store.setStreetDartCharge(chargeRatio, trajPoints);
+    }
+
     const speedRatio = store.isSliding
       ? 1.2
       : _moveVec.length() * (currentSpeed / PLAYER_DIMENSIONS.walkSpeed);
     store.setMovementSpeedRatio(speedRatio);
 
-    // Sync mounted E-Scooter position on the map
+    // Sync mounted E-Scooter position on the map (supports tandem passenger positioning!)
     if (store.ridingScooterId) {
-      store.updateMountedScooterTransform([nextFootX, nextFootY, nextFootZ], _euler.y);
+      if (store.ridingScooterRole === 'passenger') {
+        const mountedSc = store.scooters.find((sc) => sc.id === store.ridingScooterId);
+        if (mountedSc) {
+          const passX = mountedSc.position[0] - Math.sin(mountedSc.rotationY) * 0.38;
+          const passZ = mountedSc.position[2] - Math.cos(mountedSc.rotationY) * 0.38;
+          footPosRef.current = [passX, mountedSc.position[1], passZ];
+          camera.position.set(
+            passX,
+            mountedSc.position[1] + currentEyeOffsetRef.current,
+            passZ
+          );
+        }
+      } else {
+        store.updateMountedScooterTransform([nextFootX, nextFootY, nextFootZ], _euler.y);
+      }
     }
 
     // Update Local Multiplayer state buffer (with velocity for Hermite P2P interpolation)

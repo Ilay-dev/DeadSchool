@@ -144,39 +144,110 @@ export function WeaponModelGeometry({
     sightColor === 'Green' ? '#22c55e' : sightColor === 'Cyan' ? '#06b6d4' : '#ef4444';
 
   if (weaponId === 'pan') {
-    // Heavy Tactical Cast-Iron Frying Pan (10m Melee)
+    // Heavy Authentic Cast-Iron Skillet (2m Melee)
     return (
-      <group position={[0.08, -0.06, -0.16]} rotation={[0.25, 0.45, -0.15]}>
-        {/* Pan Base Disc */}
-        <mesh position={[0, 0, -0.22]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-          <cylinderGeometry args={[0.16, 0.16, 0.02, 24]} />
-          <meshStandardMaterial color="#1e2229" roughness={0.4} metalness={0.8} />
+      <group position={[0.09, -0.07, -0.18]} rotation={[0.22, 0.42, -0.12]}>
+        {/* Pan Bottom Cooking Disc with Cast Iron Seasoned Finish */}
+        <mesh position={[0, 0, -0.23]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+          <cylinderGeometry args={[0.165, 0.165, 0.016, 32]} />
+          <meshStandardMaterial color="#1a1d22" roughness={0.55} metalness={0.7} />
         </mesh>
-        {/* Pan Sloped Rim Wall */}
-        <mesh position={[0, 0.03, -0.22]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-          <cylinderGeometry args={[0.18, 0.16, 0.05, 24, 1, true]} />
-          <meshStandardMaterial color="#262c36" roughness={0.4} metalness={0.8} side={THREE.DoubleSide} />
+        {/* Concentric Heat Ring on Underside */}
+        <mesh position={[0, -0.01, -0.23]} rotation={[Math.PI / 2, 0, 0]}>
+          <torusGeometry args={[0.11, 0.005, 8, 32]} />
+          <meshStandardMaterial color="#121417" roughness={0.65} metalness={0.8} />
         </mesh>
-        {/* Thick Pan Rim Lip */}
-        <mesh position={[0, 0.055, -0.22]} rotation={[Math.PI / 2, 0, 0]}>
-          <torusGeometry args={[0.18, 0.012, 12, 24]} />
-          <meshStandardMaterial color="#111317" roughness={0.3} metalness={0.85} />
+        {/* Deep Curved Flared Skillet Bowl Wall */}
+        <mesh position={[0, 0.034, -0.23]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+          <cylinderGeometry args={[0.19, 0.165, 0.065, 32, 1, true]} />
+          <meshStandardMaterial
+            color="#22272e"
+            roughness={0.48}
+            metalness={0.72}
+            side={THREE.DoubleSide}
+          />
         </mesh>
-        {/* Pan Handle Neck */}
-        <mesh position={[0, 0.03, -0.04]} rotation={[0.15, 0, 0]} castShadow>
-          <boxGeometry args={[0.036, 0.022, 0.14]} />
-          <meshStandardMaterial color="#15171a" roughness={0.4} metalness={0.75} />
+        {/* Thick Rolled Smooth Rim Lip */}
+        <mesh position={[0, 0.068, -0.23]} rotation={[Math.PI / 2, 0, 0]}>
+          <torusGeometry args={[0.19, 0.014, 14, 32]} />
+          <meshStandardMaterial color="#16191e" roughness={0.4} metalness={0.82} />
         </mesh>
-        {/* Pan Handle Grip */}
-        <mesh position={[0, 0.05, 0.08]} rotation={[0.15, 0, 0]} castShadow>
-          <boxGeometry args={[0.034, 0.026, 0.16]} />
-          <meshStandardMaterial color="#0b0d10" roughness={0.7} metalness={0.4} />
+        {/* Left Side Pouring Spout */}
+        <mesh position={[-0.192, 0.064, -0.23]} rotation={[0, 0, Math.PI / 6]}>
+          <boxGeometry args={[0.022, 0.016, 0.038]} />
+          <meshStandardMaterial color="#1c2027" roughness={0.45} metalness={0.75} />
         </mesh>
-        {/* Hanging Hole at End of Handle */}
-        <mesh position={[0, 0.065, 0.16]} rotation={[Math.PI / 2 + 0.15, 0, 0]}>
-          <torusGeometry args={[0.018, 0.008, 8, 16]} />
-          <meshStandardMaterial color="#15171a" roughness={0.4} metalness={0.8} />
+        {/* Right Side Pouring Spout */}
+        <mesh position={[0.192, 0.064, -0.23]} rotation={[0, 0, -Math.PI / 6]}>
+          <boxGeometry args={[0.022, 0.016, 0.038]} />
+          <meshStandardMaterial color="#1c2027" roughness={0.45} metalness={0.75} />
         </mesh>
+
+        {/* Heavy Reinforced Pan Neck Bracket */}
+        <mesh position={[0, 0.045, -0.045]} rotation={[0.18, 0, 0]} castShadow>
+          <boxGeometry args={[0.048, 0.026, 0.13]} />
+          <meshStandardMaterial color="#16181d" roughness={0.5} metalness={0.8} />
+        </mesh>
+        {/* Ergonomic Contoured Handle with Thumb Rest */}
+        <mesh position={[0, 0.068, 0.08]} rotation={[0.18, 0, 0]} castShadow>
+          <boxGeometry args={[0.038, 0.032, 0.17]} />
+          <meshStandardMaterial color="#0e1013" roughness={0.65} metalness={0.4} />
+        </mesh>
+        {/* Handle Hanging Hole / Brass Rivet End */}
+        <mesh position={[0, 0.086, 0.175]} rotation={[Math.PI / 2 + 0.18, 0, 0]}>
+          <torusGeometry args={[0.02, 0.009, 10, 20]} />
+          <meshStandardMaterial color="#b45309" roughness={0.25} metalness={0.85} />
+        </mesh>
+
+        {/* Tactical Forearm and Gloved Hand Firmly Gripping the Pan Handle */}
+        <TacticalForearmAndGlove
+          gripPos={[0.01, 0.062, 0.06]}
+        />
+      </group>
+    );
+  }
+
+  if (weaponId === 'fist') {
+    // Tactical Bare-Knuckle Boxer Fists Guard
+    return (
+      <group position={[0, -0.06, -0.24]}>
+        {/* Right Punching Fist */}
+        <group position={[0.14, -0.04, 0.02]} rotation={[0.15, -0.22, 0.1]}>
+          {/* Fist Clenched Hand */}
+          <mesh castShadow>
+            <boxGeometry args={[0.075, 0.072, 0.09]} />
+            <meshStandardMaterial color="#1f242c" roughness={0.7} metalness={0.2} />
+          </mesh>
+          {/* Knuckle Armor Plate */}
+          <mesh position={[0, 0.025, -0.04]}>
+            <boxGeometry args={[0.07, 0.024, 0.022]} />
+            <meshStandardMaterial color="#374151" roughness={0.35} metalness={0.8} />
+          </mesh>
+          {/* Forearm */}
+          <mesh position={[0.02, -0.08, 0.12]} rotation={[-0.45, 0.1, 0]}>
+            <cylinderGeometry args={[0.042, 0.048, 0.22, 10]} />
+            <meshStandardMaterial color="#111827" roughness={0.8} />
+          </mesh>
+        </group>
+
+        {/* Left Defensive Guard Fist */}
+        <group position={[-0.14, 0.02, 0.06]} rotation={[0.25, 0.25, -0.12]}>
+          {/* Fist Clenched Hand */}
+          <mesh castShadow>
+            <boxGeometry args={[0.075, 0.072, 0.09]} />
+            <meshStandardMaterial color="#1f242c" roughness={0.7} metalness={0.2} />
+          </mesh>
+          {/* Knuckle Armor Plate */}
+          <mesh position={[0, 0.025, -0.04]}>
+            <boxGeometry args={[0.07, 0.024, 0.022]} />
+            <meshStandardMaterial color="#374151" roughness={0.35} metalness={0.8} />
+          </mesh>
+          {/* Forearm */}
+          <mesh position={[-0.02, -0.08, 0.12]} rotation={[-0.45, -0.1, 0]}>
+            <cylinderGeometry args={[0.042, 0.048, 0.22, 10]} />
+            <meshStandardMaterial color="#111827" roughness={0.8} />
+          </mesh>
+        </group>
       </group>
     );
   }
@@ -1082,13 +1153,15 @@ export function WeaponModelGeometry({
 }
 
 const ADS_OFFSETS_BY_WEAPON: Record<WeaponId, { x: number; y: number; z: number }> = {
-  assault: { x: 0.0, y: -0.114, z: -0.52 },
-  smg: { x: 0.0, y: -0.128, z: -0.52 },
+  // Scale-compensated by 1.12 so red dot / holographic reticle matches exact screen center (0, 0)
+  assault: { x: 0.0, y: -0.12768, z: -0.52 },
+  smg: { x: 0.0, y: -0.14336, z: -0.52 },
   sniper: { x: 0.0, y: 0.0, z: -0.5 },
-  semi_sniper: { x: 0.0, y: -0.11, z: -0.53 },
-  shotgun: { x: 0.0, y: -0.068, z: -0.5 },
+  semi_sniper: { x: 0.0, y: -0.09856, z: -0.53 },
+  shotgun: { x: 0.0, y: -0.0538, z: -0.5 },
   lidl_scanner: { x: 0.0, y: -0.075, z: -0.46 },
   pan: { x: 0.0, y: -0.06, z: -0.42 },
+  fist: { x: 0.0, y: -0.08, z: -0.38 },
 };
 
 export function FirstPersonWeapon({

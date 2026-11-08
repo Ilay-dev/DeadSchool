@@ -472,9 +472,12 @@ export function InGameHudOverlay() {
   const damageFlashAlpha = useGameStore((s) => s.damageFlashAlpha);
   const damageVignetteAlpha = useGameStore((s) => s.damageVignetteAlpha);
   const matchStartCountdownSec = useGameStore((s) => s.matchStartCountdownSec);
+  const streetDartCount = useGameStore((s) => s.streetDartCount);
   const streetDartUntil = useGameStore((s) => s.streetDartUntil);
+  const streetDartChargePower = useGameStore((s) => s.streetDartChargePower);
   const vapeChargePower = useGameStore((s) => s.vapeChargePower);
   const isNearArthem = useGameStore((s) => s.isNearArthem);
+  const isNearHausmeister = useGameStore((s) => s.isNearHausmeister);
   const isDowned = useGameStore((s) => s.isDowned);
   const downedHp = useGameStore((s) => s.downedHp);
   const maxDownedHp = useGameStore((s) => s.maxDownedHp);
@@ -588,6 +591,36 @@ export function InGameHudOverlay() {
         </div>
       )}
 
+      {/* Charged Street Dart Throw Meter */}
+      {streetDartChargePower > 0 && !isEliminated && (
+        <div className="fixed left-1/2 bottom-[28%] -translate-x-1/2 z-30 flex flex-col items-center bg-black/85 border border-pink-400/80 px-6 py-3 rounded-xl shadow-[0_0_25px_rgba(236,72,153,0.4)]">
+          <div className="text-xs uppercase font-mono tracking-widest text-pink-300 font-bold mb-1.5 flex items-center gap-2">
+            <span>💉</span> STREET DART WURFWEITE AUFLADEN [E]
+          </div>
+          <div className="w-56 h-3 bg-slate-800 rounded-full overflow-hidden border border-pink-500/40 p-0.5">
+            <div
+              className="h-full bg-gradient-to-r from-pink-500 to-rose-400 rounded-full transition-all duration-75"
+              style={{ width: `${Math.round(streetDartChargePower * 100)}%` }}
+            />
+          </div>
+          <div className="text-[11px] text-white/70 font-mono mt-1">
+            Kraft: {Math.round(streetDartChargePower * 100)}% · Loslassen zum Werfen (3m Rauchwolke)
+          </div>
+        </div>
+      )}
+
+      {/* Hausmeister Proximity Prompt */}
+      {isNearHausmeister && !isEliminated && !isDowned && (
+        <div className="fixed left-1/2 top-[22%] -translate-x-1/2 z-30 bg-slate-950/95 border-2 border-sky-400 px-6 py-3 rounded-xl text-center shadow-[0_0_30px_rgba(56,189,248,0.4)]">
+          <div className="text-sm font-black text-sky-300 uppercase tracking-wide">
+            🧹 [E] MIT HAUSMEISTER SPRECHEN
+          </div>
+          <div className="text-xs text-white/80 mt-0.5">
+            Ordnungsdienst (80% Schoko-Croissant Heilt dich / 20% Waffe konfisziert!)
+          </div>
+        </div>
+      )}
+
       {/* Arthem Proximity Prompt */}
       {isNearArthem && !isEliminated && !isDowned && (
         <div className="fixed left-1/2 top-[26%] -translate-x-1/2 z-30 bg-slate-950/95 border-2 border-pink-500 px-6 py-3 rounded-xl text-center shadow-[0_0_30px_rgba(236,72,153,0.4)]">
@@ -597,6 +630,13 @@ export function InGameHudOverlay() {
           <div className="text-xs text-white/80 mt-0.5">
             Street Dart Dealer (80% Chance auf Street Dart, 20% Lebensgefahr!)
           </div>
+        </div>
+      )}
+
+      {/* E-Scooter Proximity Prompt (Supports Tandem Ride!) */}
+      {nearbyScooterId && !ridingScooterId && !isEliminated && !isDowned && (
+        <div className="fixed left-1/2 bottom-[22%] -translate-x-1/2 z-20 bg-black/85 border border-emerald-400/80 px-5 py-2 rounded-lg text-center text-xs font-black text-emerald-300 shadow-lg">
+          🛴 [E] E-SCOOTER FAHREN (FAHRER ODER TANDEM-SOZIUS)
         </div>
       )}
 
@@ -942,7 +982,14 @@ export function InGameHudOverlay() {
                   autoFocus
                   value={chatDraft}
                   onChange={(e) => setChatDraft(e.target.value)}
-                  placeholder="Type message & press Enter..."
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      e.stopPropagation();
+                      setChatInputOpen(false);
+                      setChatDraft('');
+                    }
+                  }}
+                  placeholder="Type message & press Enter (Esc to cancel)..."
                   className="w-72 px-3 py-1.5 bg-black/80 border border-white/30 text-white text-sm font-bold outline-none"
                 />
               </form>
@@ -952,11 +999,14 @@ export function InGameHudOverlay() {
               </div>
             )}
 
-            {/* Keybind Hints Line: [K] Shoot  [L] ADS  [Q] Vape Smoke  [Z] Quick Chat */}
-            <div className="flex items-center gap-3.5 text-[14px] font-extrabold text-white/65 drop-shadow">
+            {/* Keybind Hints Line: [K] Shoot  [L] ADS  [Q] Vape Smoke  [E] Street Dart  [Z] Quick Chat */}
+            <div className="flex items-center gap-3 text-[14px] font-extrabold text-white/65 drop-shadow">
               <span>[{keybinds.shoot || 'K'}] Shoot</span>
               <span>[{keybinds.ads || 'L'}] ADS</span>
               <span className="text-[#22d3ee]">[Q] Vape ({vapeCount})</span>
+              {streetDartCount > 0 && (
+                <span className="text-[#ec4899]">[E] Dart ({streetDartCount})</span>
+              )}
               <span>[{keybinds.quickChat || 'Z'}] Chat</span>
             </div>
 

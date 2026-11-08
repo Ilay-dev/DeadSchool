@@ -277,9 +277,9 @@ export function MainMenuScreen() {
         <main className="flex-1 flex items-center justify-center pointer-events-auto px-8">
           <div className="w-full max-w-5xl bg-black/75 border border-white/15 p-6 space-y-4">
             <h2 className="text-2xl font-extrabold tracking-wide text-white uppercase">
-              TACTICAL LOCKER &amp; LOADOUT (6 WAFFEN INKL. LIDL SCANNER)
+              TACTICAL LOCKER &amp; LOADOUT (7 WAFFEN INKL. LIDL SCANNER &amp; BRATPFANNE)
             </h2>
-            <div className="grid grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
               {WEAPON_LIST.map((w) => {
                 const isSelected = selectedClass === w.id;
                 return (

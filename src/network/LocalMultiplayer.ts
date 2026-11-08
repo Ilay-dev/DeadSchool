@@ -1332,6 +1332,9 @@ class LocalMultiplayerManager {
       if (typeof msg.lobbyCountdownSec === 'number' || msg.lobbyCountdownSec === null) {
         store.setLobbyCountdown(msg.lobbyCountdownSec);
       }
+      if (typeof msg.matchDurationSec === 'number' && !store.isHost) {
+        store.setMatchDurationSec(msg.matchDurationSec);
+      }
       if (typeof msg.matchTimeRemaining === 'number' && !store.isHost) {
         store.setMatchTimeRemaining(msg.matchTimeRemaining);
       }
@@ -1586,6 +1589,7 @@ class LocalMultiplayerManager {
       ready: store.isReady,
       weaponClass: store.selectedClass,
       lobbyCountdownSec: store.lobbyCountdownSec,
+      matchDurationSec: store.matchDurationSec,
       matchTimeRemaining: store.matchTimeRemaining,
     });
   }

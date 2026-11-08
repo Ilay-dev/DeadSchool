@@ -138,6 +138,30 @@ function WeaponCardIllustration({ weaponId }: { weaponId: WeaponId }) {
     );
   }
 
+  if (weaponId === 'pan') {
+    return (
+      <svg viewBox="0 0 220 130" className="w-40 h-26 drop-shadow-[0_8px_12px_rgba(0,0,0,0.65)]">
+        <g transform="rotate(-15 110 65)">
+          {/* Pan Circular Skillet Disc */}
+          <ellipse cx="85" cy="65" rx="52" ry="38" fill="#181a1f" stroke="#374151" strokeWidth="2.5" />
+          <ellipse cx="85" cy="65" rx="42" ry="29" fill="#111317" />
+          {/* Inner Cooking Surface Ring */}
+          <ellipse cx="85" cy="65" rx="26" ry="17" fill="#1b1f26" opacity="0.6" />
+          {/* Left / Right Pouring Lips */}
+          <path d="M 85 26 Q 85 20 88 23" stroke="#4b5563" strokeWidth="2" fill="none" />
+          {/* Handle Bracket & Rivets */}
+          <polygon points="135,59 148,61 148,69 135,71" fill="#374151" />
+          <circle cx="140" cy="63" r="1.5" fill="#f59e0b" />
+          <circle cx="140" cy="67" r="1.5" fill="#f59e0b" />
+          {/* Long Cast-Iron Ergonomic Handle */}
+          <rect x="146" y="61" width="56" height="8" rx="3" fill="#111317" stroke="#374151" strokeWidth="1.5" />
+          {/* Hanging Loop / Brass End */}
+          <ellipse cx="204" cy="65" rx="4" ry="3" fill="#090a0c" stroke="#b45309" strokeWidth="1.5" />
+        </g>
+      </svg>
+    );
+  }
+
   return (
     <svg viewBox="0 0 220 130" className="w-40 h-26 drop-shadow-[0_8px_12px_rgba(0,0,0,0.65)]">
       <g transform="rotate(12 110 65)">
@@ -180,11 +204,12 @@ export function SelectClassModal() {
         SELECT CLASS
       </h1>
 
-      {/* 6 Translucent Weapon Cards Row (including the new Lidl Barcode Scanner!) */}
-      <div className="grid grid-cols-6 gap-4 max-w-[1360px] w-full">
+      {/* 7 Responsive Weapon Cards Row */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 max-w-[1460px] w-full">
         {WEAPON_LIST.map((weapon) => {
           const isSelected = selectedClass === weapon.id;
           const isLidl = weapon.id === 'lidl_scanner';
+          const isPan = weapon.id === 'pan';
           return (
             <button
               key={weapon.id}
@@ -196,12 +221,19 @@ export function SelectClassModal() {
                   ? 'bg-white/24 ring-2 ring-white/65 scale-[1.02]'
                   : isLidl
                     ? 'bg-[#0050aa]/35 hover:bg-[#0050aa]/55 border border-[#fff000]/45'
-                    : 'bg-white/12 hover:bg-white/20'
+                    : isPan
+                      ? 'bg-amber-950/25 hover:bg-amber-950/40 border border-amber-600/35'
+                      : 'bg-white/12 hover:bg-white/20'
               }`}
             >
               {isLidl && (
                 <span className="absolute -top-2.5 right-2 bg-[#fff000] text-[#0050aa] text-[10px] font-black px-2 py-0.5 uppercase shadow">
-                  10s STUN (4m)
+                  4s STUN (4m)
+                </span>
+              )}
+              {isPan && (
+                <span className="absolute -top-2.5 right-2 bg-amber-500 text-black text-[10px] font-black px-2 py-0.5 uppercase shadow">
+                  55 DMG (2m)
                 </span>
               )}
 
