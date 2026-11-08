@@ -23,6 +23,7 @@ export interface RoomPlayerState {
   velocity: [number, number, number];
   rotation: [number, number];
   crouching: boolean;
+  sliding?: boolean;
   ads: boolean;
   ridingScooter: boolean;
   hasFlag: boolean;
@@ -246,6 +247,7 @@ async function startServer() {
               assignedTeam === 'alpha' ? Math.PI : 0,
             ],
             crouching: false,
+            sliding: false,
             ads: false,
             ridingScooter: false,
             hasFlag: false,
@@ -272,7 +274,7 @@ async function startServer() {
             { type: 'room:state', roomCode, room, lanIp: getLocalLanIp() },
             ws
           );
-        } else if (type === 'player:transform') {
+        } else if (type === 'player:transform' || type === 'player:moved') {
           const info = clientRoomMap.get(ws);
           if (!info) return;
           const room = rooms.get(info.roomCode);
@@ -296,6 +298,7 @@ async function startServer() {
             p.team = msg.team;
           }
           p.crouching = Boolean(msg.crouching);
+          p.sliding = Boolean(msg.sliding);
           p.ads = Boolean(msg.ads);
           p.ridingScooter = Boolean(msg.ridingScooter);
           p.weaponClass = msg.weaponClass || p.weaponClass;
@@ -314,13 +317,63 @@ async function startServer() {
               velocity: p.velocity,
               rotation: p.rotation,
               crouching: p.crouching,
+              sliding: p.sliding,
               ads: p.ads,
               ridingScooter: p.ridingScooter,
               weaponClass: p.weaponClass,
+              hp: typeof msg.hp === 'number' ? msg.hp : p.hp,
+              maxHp: p.maxHp,
+              kills: typeof msg.kills === 'number' ? msg.kills : p.kills,
+              deaths: typeof msg.deaths === 'number' ? msg.deaths : p.deaths,
+              score: typeof msg.score === 'number' ? msg.score : undefined,
+              seq: msg.seq,
               timestamp: p.lastUpdated,
             },
             ws
           );
+        } else if (type === 'player:shot' || type === 'combat:shot') {
+          const info = clientRoomMap.get(ws);
+          if (!info) return;
+          broadcastToRoom(
+            wss,
+            info.roomCode,
+            {
+              type: 'player:shot',
+              roomCode: info.roomCode,
+              playerId: info.playerId,
+              weaponClass: msg.weaponClass || 'assault',
+              muzzlePos: msg.muzzlePos,
+              endPoint: msg.endPoint,
+              hitPlayerId: msg.hitPlayerId || null,
+              ads: Boolean(msg.ads),
+              timestamp: Date.now(),
+            },
+            ws
+          );
+        } else if (
+          type === 'webrtc:offer' ||
+          type === 'webrtc:answer' ||
+          type === 'webrtc:ice-batch' ||
+          type === 'presence:beacon'
+        ) {
+          const info = clientRoomMap.get(ws);
+          if (!info) return;
+          const relayPayload = { ...msg, playerId: info.playerId, roomCode: info.roomCode };
+          // Direct routed delivery if targetPlayerId is specified
+          if (msg.targetPlayerId) {
+            let delivered = false;
+            clientRoomMap.forEach((cinfo, cws) => {
+              if (cinfo.playerId === msg.targetPlayerId && cws.readyState === 1) {
+                try {
+                  cws.send(JSON.stringify(relayPayload));
+                  delivered = true;
+                } catch {}
+              }
+            });
+            if (delivered) return;
+          }
+          // Otherwise broadcast to other room members
+          broadcastToRoom(wss, info.roomCode, relayPayload, ws);
         } else if (type === 'lobby:update') {
           const info = clientRoomMap.get(ws);
           if (!info) return;

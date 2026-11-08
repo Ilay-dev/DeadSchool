@@ -246,11 +246,12 @@ export function PlayerController({
         _rayOrigin.z + _rayDir.z * tracerDist,
       ];
 
+      let hitActorId: string | null = null;
+
       for (const hit of hits) {
         if (hit.distance > maxWeaponRange) break;
 
         let obj: THREE.Object3D | null = hit.object;
-        let hitActorId: string | null = null;
         let hitZone: HitZone = 'body';
 
         if (hit.object.userData?.hitZone) {
@@ -329,15 +330,24 @@ export function PlayerController({
         }
       }
 
+      const handSign = state.settings.leftHanded ? -1 : 1;
+      camera.getWorldDirection(_forward);
+      _right.crossVectors(_forward, camera.up).normalize();
+      const muzzleStart: [number, number, number] = [
+        camera.position.x + _forward.x * 0.52 + _right.x * 0.18 * handSign,
+        camera.position.y - 0.12 + _forward.y * 0.52,
+        camera.position.z + _forward.z * 0.52 + _right.z * 0.18 * handSign,
+      ];
+
+      // Replicate shot across WebRTC DataChannels, server WS, & local BroadcastChannel
+      multiplayerManager.sendShotEvent(
+        muzzleStart,
+        endPoint,
+        state.selectedClass,
+        hitActorId
+      );
+
       if (state.settings.fpBulletTracers) {
-        const handSign = state.settings.leftHanded ? -1 : 1;
-        camera.getWorldDirection(_forward);
-        _right.crossVectors(_forward, camera.up).normalize();
-        const muzzleStart: [number, number, number] = [
-          camera.position.x + _forward.x * 0.52 + _right.x * 0.18 * handSign,
-          camera.position.y - 0.12 + _forward.y * 0.52,
-          camera.position.z + _forward.z * 0.52 + _right.z * 0.18 * handSign,
-        ];
         onSpawnTracer(
           muzzleStart,
           endPoint,

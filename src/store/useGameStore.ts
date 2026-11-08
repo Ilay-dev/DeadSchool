@@ -1530,6 +1530,7 @@ export const useGameStore = create<GameStoreState>()(
 
           const nextName = playerName || existing.name;
           const nextTeam = team || existing.team;
+          const nextWeaponClass = weaponClass || existing.weaponClass;
           const nextReady = meta?.ready ?? existing.ready;
           const nextHp = typeof meta?.hp === 'number' ? meta.hp : existing.hp;
           const nextMaxHp = typeof meta?.maxHp === 'number' ? meta.maxHp : existing.maxHp;
@@ -1545,6 +1546,7 @@ export const useGameStore = create<GameStoreState>()(
           existing.crouching = crouching;
           existing.sliding = sliding;
           existing.ads = ads;
+          existing.weaponClass = nextWeaponClass;
           existing.ridingScooter = ridingScooter;
           existing.lastUpdatePerfMs = now;
           if (!existing.snapshotBuffer) {
@@ -1560,7 +1562,7 @@ export const useGameStore = create<GameStoreState>()(
           const metadataChanged =
             existing.name !== nextName ||
             existing.team !== nextTeam ||
-            existing.weaponClass !== weaponClass ||
+            existing.weaponClass !== nextWeaponClass ||
             existing.ready !== nextReady ||
             Math.round(existing.hp) !== Math.round(nextHp) ||
             existing.maxHp !== nextMaxHp ||
@@ -1574,7 +1576,7 @@ export const useGameStore = create<GameStoreState>()(
 
           existing.name = nextName;
           existing.team = nextTeam;
-          existing.weaponClass = weaponClass;
+          existing.weaponClass = nextWeaponClass;
           existing.ready = nextReady;
           existing.hp = nextHp;
           existing.maxHp = nextMaxHp;

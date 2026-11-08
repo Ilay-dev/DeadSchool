@@ -50,7 +50,7 @@ class SoundEngine {
    * Combines supersonic crack transient, high-pressure chamber explosion,
    * punchy sub-bass body, and environmental acoustic tail.
    */
-  public playShot(weaponId: WeaponId) {
+  public playShot(weaponId: WeaponId, volumeScale = 1.0) {
     if (weaponId === 'lidl_scanner') {
       this.playLidlScannerSound();
       return;
@@ -58,7 +58,7 @@ class SoundEngine {
 
     const ctx = this.getContext();
     if (!ctx) return;
-    const vol = this.getVolumeGain();
+    const vol = this.getVolumeGain() * Math.max(0.05, Math.min(1.5, volumeScale));
     if (vol <= 0.01) return;
 
     const now = ctx.currentTime;

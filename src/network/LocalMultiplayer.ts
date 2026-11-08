@@ -39,6 +39,15 @@ export interface ActiveRoomSummary {
   updatedAt?: number;
 }
 
+export interface RemoteShotEvent {
+  playerId: string;
+  weaponClass: WeaponId;
+  muzzlePos: [number, number, number];
+  endPoint: [number, number, number];
+  hitPlayerId?: string | null;
+  ads?: boolean;
+}
+
 /**
  * Global STUN + TURN servers (UDP + TCP over port 80 & 443) for Native RTCPeerConnection
  * and PeerJS DataChannels. Works across strict NATs and firewalls.
@@ -201,6 +210,8 @@ class LocalMultiplayerManager {
   private latestLocalPosition: [number, number, number] = [2.1, 0.15, 32.5];
   private latestLocalVelocity: [number, number, number] = [0, 0, 0];
   private latestLocalRotation: [number, number] = [0, Math.PI];
+
+  private shotListeners: Set<(ev: RemoteShotEvent) => void> = new Set();
 
   private discoveredRooms: Map<string, ActiveRoomSummary> = new Map();
   public activeRooms: ActiveRoomSummary[] = [];
@@ -573,7 +584,7 @@ class LocalMultiplayerManager {
     try {
       this.pendingPeerDials.set(remotePeerId, now);
       const conn = this.peer.connect(remotePeerId, {
-        reliable: true,
+        reliable: false,
       });
       this.registerPeerJsConnection(conn);
     } catch {
@@ -812,7 +823,14 @@ class LocalMultiplayerManager {
       } catch {}
     }
 
-    // 2. Global WebRTC Signaling Topic
+    // 2. Direct server WebSocket relay (sub-millisecond LAN/central signaling!)
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      try {
+        this.ws.send(JSON.stringify(fullPayload));
+      } catch {}
+    }
+
+    // 3. Global WebRTC Signaling Topic (fallback when no central server)
     if (this.sigWs && this.sigWs.readyState === WebSocket.OPEN && this.sigConnected) {
       this.subscribeSignalingRoom(roomCode);
       try {
@@ -990,10 +1008,9 @@ class LocalMultiplayerManager {
     }
 
     // 5. Handshake bridge ONLY during the first ~300ms before WebRTC DataChannel opens
-    // (capped strictly at 4Hz / 250ms so signaling broker is NEVER rate-limited!)
     if (!sentOverAnyDataChannel) {
       const nowPerf = performance.now();
-      if (nowPerf - this.lastHandshakeFallbackSentPerf >= 250) {
+      if (nowPerf - this.lastHandshakeFallbackSentPerf >= 90) {
         this.lastHandshakeFallbackSentPerf = nowPerf;
         this.sendSignalingMessage(packet);
       }
@@ -1332,6 +1349,27 @@ class LocalMultiplayerManager {
           );
         }
       }
+    } else if (msg.type === 'player:shot' || msg.type === 'combat:shot') {
+      if (
+        msg.playerId &&
+        msg.playerId !== store.playerId &&
+        Array.isArray(msg.muzzlePos) &&
+        Array.isArray(msg.endPoint)
+      ) {
+        const ev: RemoteShotEvent = {
+          playerId: msg.playerId,
+          weaponClass: (msg.weaponClass as WeaponId) || 'assault',
+          muzzlePos: msg.muzzlePos as [number, number, number],
+          endPoint: msg.endPoint as [number, number, number],
+          hitPlayerId: msg.hitPlayerId || null,
+          ads: Boolean(msg.ads),
+        };
+        this.shotListeners.forEach((fn) => {
+          try {
+            fn(ev);
+          } catch {}
+        });
+      }
     } else if (msg.type === 'chat:message') {
       if (msg.playerId !== store.playerId) {
         store.addChatMessage(msg.senderName || 'Player', msg.team || 'alpha', msg.text || '');
@@ -1395,6 +1433,72 @@ class LocalMultiplayerManager {
       roomCode: roomOverride || s.roomCode || 'WORLD',
       playerId: s.playerId,
     });
+  }
+
+  public onRemoteShot(callback: (event: RemoteShotEvent) => void): () => void {
+    this.shotListeners.add(callback);
+    return () => this.shotListeners.delete(callback);
+  }
+
+  public sendShotEvent(
+    muzzlePos: [number, number, number],
+    endPoint: [number, number, number],
+    weaponClass: WeaponId,
+    hitPlayerId?: string | null
+  ) {
+    const store = useGameStore.getState();
+    const packet = {
+      type: 'player:shot',
+      msgId: this.nextMsgId(),
+      roomCode: store.roomCode || 'WORLD',
+      playerId: store.playerId,
+      weaponClass,
+      muzzlePos,
+      endPoint,
+      hitPlayerId: hitPlayerId || null,
+      ads: store.isAds,
+      timestamp: Date.now(),
+    };
+    this.isDuplicateMsgId(packet.msgId);
+    const jsonStr = JSON.stringify(packet);
+
+    // 1. Native WebRTC DataChannels (low latency direct)
+    this.rtcSessions.forEach((session) => {
+      const dc =
+        session.fastDc?.readyState === 'open'
+          ? session.fastDc
+          : session.reliableDc?.readyState === 'open'
+            ? session.reliableDc
+            : null;
+      if (dc) {
+        try {
+          dc.send(jsonStr);
+        } catch {}
+      }
+    });
+
+    // 2. PeerJS DataConnections
+    this.peerConnections.forEach((conn) => {
+      if (conn.open) {
+        try {
+          conn.send(packet);
+        } catch {}
+      }
+    });
+
+    // 3. Same-PC BroadcastChannel
+    if (this.broadcastChannel) {
+      try {
+        this.broadcastChannel.postMessage(packet);
+      } catch {}
+    }
+
+    // 4. WebSocket Server
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      try {
+        this.ws.send(jsonStr);
+      } catch {}
+    }
   }
 
   public sendHitscanEvent(

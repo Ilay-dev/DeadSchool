@@ -21,6 +21,7 @@ import {
   type PickupItemType,
 } from '../../game/rules';
 import { soundEngine } from '../../game/soundEngine';
+import { multiplayerManager } from '../../network/LocalMultiplayer';
 import { WeaponModelGeometry } from './Weapon';
 import {
   PlayerController,
@@ -251,6 +252,8 @@ export function TacticalSoldierMesh({
   moveSpeed = 0,
   animTime = 0,
   soldierSkin = 'default',
+  pitch,
+  isFiring = false,
   liveActor,
 }: {
   team: 'alpha' | 'bravo';
@@ -265,6 +268,8 @@ export function TacticalSoldierMesh({
   moveSpeed?: number;
   animTime?: number;
   soldierSkin?: string;
+  pitch?: number;
+  isFiring?: boolean;
   liveActor?: RemoteActor;
 }) {
   let baseUniform = team === 'alpha' ? '#2c3847' : '#422c2c';
@@ -462,6 +467,29 @@ export function TacticalSoldierMesh({
       rootRotZ += (Math.random() - 0.5) * 0.12;
     }
 
+    // Apply look pitch and weapon aiming (shows exact direction opponent is looking)
+    const activePitch = typeof pitch === 'number' ? pitch : (liveActor?.rotation?.[0] || 0);
+    const activeAds = liveActor ? Boolean(liveActor.ads) : false;
+
+    // Head tilts directly up/down with camera pitch
+    headRotX += -activePitch * 0.9;
+    // Torso tilts slightly with camera pitch
+    upperBodyRotX += -activePitch * 0.35;
+
+    if (activeAds) {
+      // Raised ADS aiming stance
+      rightArmRotX = 0.95 - activePitch * 0.88;
+      rightArmRotY = -0.05;
+      rightArmRotZ = -0.02;
+
+      leftArmRotX = 0.82 - activePitch * 0.88;
+      leftArmRotY = 0.12;
+      leftArmRotZ = 0.22;
+    } else {
+      rightArmRotX += -activePitch * 0.85;
+      leftArmRotX += -activePitch * 0.85;
+    }
+
     if (rootRef.current) {
       rootRef.current.position.y = rootY;
       rootRef.current.rotation.x = rootRotX;
@@ -628,7 +656,24 @@ export function TacticalSoldierMesh({
               rotation={showcasePose ? [0.95, 0.2, 0.55] : [0, Math.PI, 0]}
               scale={showcasePose ? 1.05 : 0.9}
             >
-              <WeaponModelGeometry weaponId={weaponClass} />
+              <WeaponModelGeometry weaponId={liveActor?.weaponClass || weaponClass} />
+
+              {/* Muzzle Flash & Laser on remote player's weapon when firing */}
+              {isFiring && (
+                <mesh position={[0, 0.02, -0.68]} rotation={[0, 0, Math.random() * Math.PI]}>
+                  {(liveActor?.weaponClass || weaponClass) === 'lidl_scanner' ? (
+                    <>
+                      <boxGeometry args={[0.22, 0.01, 0.65]} />
+                      <meshBasicMaterial color="#ff1e1e" transparent opacity={0.92} />
+                    </>
+                  ) : (
+                    <>
+                      <coneGeometry args={[0.075, 0.2, 6]} />
+                      <meshBasicMaterial color="#ffbe3b" transparent opacity={0.92} />
+                    </>
+                  )}
+                </mesh>
+              )}
             </group>
           </group>
 
@@ -910,13 +955,39 @@ function RemoteActorsAndBots({
       {
         pos: [number, number, number];
         yaw: number;
+        pitch: number;
         initialized: boolean;
       }
     >
   >({});
+  const remoteFlashesRef = useRef<Record<string, number>>({});
   const botTimersRef = useRef<Record<string, number>>({});
   const botHeadingsRef = useRef<Record<string, number>>({});
   const losMapRef = useRef<Record<string, boolean>>({});
+
+  useEffect(() => {
+    const unsub = multiplayerManager.onRemoteShot((ev) => {
+      const dist = Math.hypot(
+        camera.position.x - ev.muzzlePos[0],
+        camera.position.y - ev.muzzlePos[1],
+        camera.position.z - ev.muzzlePos[2]
+      );
+      const volScale = Math.max(0.12, Math.min(1.0, 1 - dist / 70));
+      soundEngine.playShot(ev.weaponClass, volScale);
+
+      remoteFlashesRef.current[ev.playerId] = Date.now() + 65;
+
+      if (onSpawnTracer) {
+        let tracerColor = '#fde047';
+        if (ev.weaponClass === 'sniper') tracerColor = '#fbbf24';
+        else if (ev.weaponClass === 'smg') tracerColor = '#fef08a';
+        else if (ev.weaponClass === 'shotgun') tracerColor = '#f97316';
+        else if (ev.weaponClass === 'lidl_scanner') tracerColor = '#ff1e1e';
+        onSpawnTracer(ev.muzzlePos, ev.endPoint, tracerColor);
+      }
+    });
+    return unsub;
+  }, [camera, onSpawnTracer]);
 
   useFrame((state, rawDelta) => {
     const dt = Math.min(rawDelta, 0.05);
@@ -1184,6 +1255,7 @@ function RemoteActorsAndBots({
               actor.targetPosition[2],
             ],
             yaw: actor.rotation[1] || 0,
+            pitch: actor.rotation[0] || 0,
             initialized: true,
           };
           renderStatesRef.current[actor.id] = rState;
@@ -1229,6 +1301,10 @@ function RemoteActorsAndBots({
           Math.cos(targetYaw - rState.yaw)
         );
         rState.yaw = THREE.MathUtils.damp(rState.yaw, rState.yaw + angleDiff, 24, dt);
+
+        // Smooth look pitch interpolation
+        const targetPitch = actor.rotation[0] || 0;
+        rState.pitch = THREE.MathUtils.damp(rState.pitch ?? 0, targetPitch, 24, dt);
 
         actor.position[0] = rState.pos[0];
         actor.position[1] = rState.pos[1];
@@ -1285,6 +1361,8 @@ function RemoteActorsAndBots({
               isSliding={isSliding}
               isCrouching={isCrouching}
               moveSpeed={speed}
+              pitch={renderStatesRef.current[actor.id]?.pitch ?? actor.rotation[0]}
+              isFiring={Boolean(remoteFlashesRef.current[actor.id] && nowMs < remoteFlashesRef.current[actor.id])}
               liveActor={actor}
             />
 
