@@ -197,6 +197,12 @@ export function MainMenuScreen() {
   };
 
   const handleQuickPlay = () => {
+    if (selectedModeId !== 'BOTS') {
+      const targetRoom = roomCode || 'WORLD';
+      setRoomCode(targetRoom);
+      multiplayerManager.initWebRtcPeer(targetRoom, false);
+      multiplayerManager.sendLobbySync();
+    }
     setScreen('select_class');
   };
 

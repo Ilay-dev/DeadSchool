@@ -381,7 +381,15 @@ export interface GameStoreState {
     ridingScooter?: boolean,
     playerName?: string,
     team?: 'alpha' | 'bravo',
-    sliding?: boolean
+    sliding?: boolean,
+    meta?: {
+      hp?: number;
+      maxHp?: number;
+      kills?: number;
+      deaths?: number;
+      score?: number;
+      ready?: boolean;
+    }
   ) => void;
   removeRemotePlayer: (id: string) => void;
   damageRemoteActor: (
@@ -645,7 +653,7 @@ export const useGameStore = create<GameStoreState>()(
       damageIndicators: [],
 
       playerId: `p_${Math.random().toString(36).slice(2, 8)}`,
-      playerName: 'Player_4',
+      playerName: `Player_${Math.floor(100 + Math.random() * 899)}`,
       isLoggedIn: false,
       partySlots: [null, null, null],
       onlinePlayersCount: 443,
@@ -655,11 +663,11 @@ export const useGameStore = create<GameStoreState>()(
 
       roomCode: 'WORLD',
       lanIp: '192.168.1.100',
-      networkTransport: 'lan-ws',
+      networkTransport: 'webrtc-p2p',
       isHost: true,
       isPublicRoom: true,
       selectedMapId: 'timber_campus',
-      selectedModeId: 'BOTS',
+      selectedModeId: 'TDM',
       playerTeam: 'alpha',
       isReady: false,
       isSpectating: false,
@@ -704,10 +712,10 @@ export const useGameStore = create<GameStoreState>()(
       damageFlashAlpha: 0,
 
       alphaScore: 0,
-      bravoScore: 3,
+      bravoScore: 0,
       matchTimeRemaining: 266, // 4:26 matching Screenshot 1
 
-      remotePlayers: createBotsForBotMode(DEFAULT_CAMPUS_SPAWNS),
+      remotePlayers: {},
       killFeed: [
         {
           id: 'kf_init_1',
@@ -1479,7 +1487,8 @@ export const useGameStore = create<GameStoreState>()(
         ridingScooter = false,
         playerName,
         team,
-        sliding = false
+        sliding = false,
+        meta
       ) =>
         set((state) => {
           if (id === state.playerId) return state;
@@ -1496,12 +1505,12 @@ export const useGameStore = create<GameStoreState>()(
                   name: playerName || `Player_${id.slice(0, 4)}`,
                   team: team || (state.playerTeam === 'alpha' ? 'bravo' : 'alpha'),
                   weaponClass,
-                  ready: true,
-                  hp: 100,
-                  maxHp: 100,
-                  score: 0,
-                  kills: 0,
-                  deaths: 0,
+                  ready: meta?.ready ?? true,
+                  hp: meta?.hp ?? 100,
+                  maxHp: meta?.maxHp ?? 100,
+                  score: meta?.score ?? 0,
+                  kills: meta?.kills ?? 0,
+                  deaths: meta?.deaths ?? 0,
                   ping: 14,
                   position,
                   targetPosition: position,
@@ -1533,6 +1542,12 @@ export const useGameStore = create<GameStoreState>()(
                 ads,
                 weaponClass,
                 ridingScooter,
+                ready: meta?.ready ?? existing.ready,
+                hp: typeof meta?.hp === 'number' ? meta.hp : existing.hp,
+                maxHp: typeof meta?.maxHp === 'number' ? meta.maxHp : existing.maxHp,
+                kills: typeof meta?.kills === 'number' ? meta.kills : existing.kills,
+                deaths: typeof meta?.deaths === 'number' ? meta.deaths : existing.deaths,
+                score: typeof meta?.score === 'number' ? meta.score : existing.score,
                 snapshotBuffer: nextBuffer,
               },
             },
@@ -1706,10 +1721,9 @@ export const useGameStore = create<GameStoreState>()(
         })),
     }),
     {
-      name: 'deadshot_io_storage_v3',
+      name: 'deadshot_io_storage_v4',
       partialize: (state) => ({
         settings: state.settings,
-        playerName: state.playerName,
         selectedClass: state.selectedClass,
       }),
     }

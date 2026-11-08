@@ -64,7 +64,7 @@ export function PlayerController({
   ) => void;
 }) {
   const { camera, scene } = useThree();
-  const { world } = useRapier();
+  const { world, rapier } = useRapier();
   const controlsRef = useRef<any>(null);
   const rigidBodyRef = useRef<RapierRigidBody | null>(null);
   const colliderRef = useRef<RapierCollider | null>(null);
@@ -99,8 +99,6 @@ export function PlayerController({
   const selectedMapId = useGameStore((s) => s.selectedMapId);
   const playerTeam = useGameStore((s) => s.playerTeam);
   const respawnNonce = useGameStore((s) => s.respawnNonce);
-  const isCrouching = useGameStore((s) => s.isCrouching);
-  const isSliding = useGameStore((s) => s.isSliding);
 
   // Initialize Rapier KinematicCharacterController with 0.40m step climbing & smooth wall sliding
   useEffect(() => {
@@ -672,9 +670,9 @@ export function PlayerController({
 
     const prevFootY = footPosRef.current[1];
     const isLowCollider = store.isCrouching || store.isSliding;
-    const capsuleHalfHeight = isLowCollider
-      ? PLAYER_DIMENSIONS.crouchTotalHeight * 0.5
-      : PLAYER_DIMENSIONS.totalHeight * 0.5;
+    // Keep physical capsule height constant so Rapier never recreates the collider mid-slide/crouch
+    // (which previously teleported the bottom of the capsule 45cm underground when standing back up).
+    const capsuleHalfHeight = PLAYER_DIMENSIONS.totalHeight * 0.5;
 
     let nextFootX = footPosRef.current[0] + desiredDx;
     let nextFootY = footPosRef.current[1] + desiredDy;
@@ -687,27 +685,100 @@ export function PlayerController({
 
     if (controller && collider && rb) {
       try {
+        // Ensure kinematic RigidBody starts at exact authoritative footPosRef on high-refresh-rate monitors
+        rb.setTranslation(
+          {
+            x: footPosRef.current[0],
+            y: footPosRef.current[1] + capsuleHalfHeight,
+            z: footPosRef.current[2],
+          },
+          false
+        );
+
         if (velocityYRef.current > 0) {
           controller.disableSnapToGround();
         } else {
           controller.enableSnapToGround(PLAYER_DIMENSIONS.maxStepHeight);
         }
+
         controller.computeColliderMovement(collider, {
           x: desiredDx,
           y: desiredDy,
           z: desiredDz,
         });
-        const corrected = controller.computedMovement();
-        const grounded = controller.computedGrounded();
+        let corrected = controller.computedMovement();
+        let grounded = controller.computedGrounded();
 
-        const currentBodyPos = rb.translation();
-        const resolvedBodyX = currentBodyPos.x + corrected.x;
-        const resolvedBodyY = currentBodyPos.y + corrected.y;
-        const resolvedBodyZ = currentBodyPos.z + corrected.z;
+        // Anti-snag micro-seam recovery: if player is trying to move horizontally on ground
+        // but a floor/stair triangle seam blocked horizontal progress, test with a gentle +0.10m step lift
+        const desiredHoriz = Math.hypot(desiredDx, desiredDz);
+        const actualHoriz = Math.hypot(corrected.x, corrected.z);
+        if (
+          desiredHoriz > 0.004 &&
+          actualHoriz < desiredHoriz * 0.2 &&
+          velocityYRef.current <= 0.5
+        ) {
+          rb.setTranslation(
+            {
+              x: footPosRef.current[0],
+              y: footPosRef.current[1] + capsuleHalfHeight + 0.1,
+              z: footPosRef.current[2],
+            },
+            false
+          );
+          controller.computeColliderMovement(collider, {
+            x: desiredDx,
+            y: Math.min(0, desiredDy) - 0.1,
+            z: desiredDz,
+          });
+          const retryCorrected = controller.computedMovement();
+          if (Math.hypot(retryCorrected.x, retryCorrected.z) > actualHoriz * 1.5) {
+            corrected = {
+              x: retryCorrected.x,
+              y: retryCorrected.y + 0.1,
+              z: retryCorrected.z,
+            };
+            grounded = controller.computedGrounded() || grounded;
+          } else {
+            rb.setTranslation(
+              {
+                x: footPosRef.current[0],
+                y: footPosRef.current[1] + capsuleHalfHeight,
+                z: footPosRef.current[2],
+              },
+              false
+            );
+          }
+        }
 
-        nextFootX = resolvedBodyX;
-        nextFootY = Math.max(-15, resolvedBodyY - capsuleHalfHeight);
-        nextFootZ = resolvedBodyZ;
+        nextFootX = footPosRef.current[0] + corrected.x;
+        nextFootY = Math.max(-15, footPosRef.current[1] + corrected.y);
+        nextFootZ = footPosRef.current[2] + corrected.z;
+
+        // Downward anti-penetration floor raycast: ensures player feet never clip underneath floor/stair trimesh
+        if (rapier && velocityYRef.current <= 0.5) {
+          const rayStartY = nextFootY + 0.95;
+          const downRay = new rapier.Ray(
+            { x: nextFootX, y: rayStartY, z: nextFootZ },
+            { x: 0, y: -1, z: 0 }
+          );
+          const groundHit = world.castRay(
+            downRay,
+            1.02,
+            true,
+            undefined,
+            undefined,
+            collider,
+            rb
+          );
+          if (groundHit && groundHit.timeOfImpact > 0.05) {
+            const floorY = rayStartY - groundHit.timeOfImpact;
+            if (floorY >= nextFootY - 0.04 && floorY - nextFootY <= 0.65) {
+              nextFootY = Math.max(nextFootY, floorY);
+              grounded = true;
+            }
+          }
+        }
 
         const wasInAir = !isGroundedRef.current;
         const prevDownVel = velocityYRef.current;
@@ -750,6 +821,14 @@ export function PlayerController({
           isGroundedRef.current = Boolean(grounded);
         }
 
+        rb.setTranslation(
+          {
+            x: nextFootX,
+            y: nextFootY + capsuleHalfHeight,
+            z: nextFootZ,
+          },
+          true
+        );
         rb.setNextKinematicTranslation({
           x: nextFootX,
           y: nextFootY + capsuleHalfHeight,
@@ -881,10 +960,7 @@ export function PlayerController({
     );
   });
 
-  const halfCylHeight =
-    isCrouching || isSliding
-      ? PLAYER_DIMENSIONS.crouchCylinderHeight * 0.5
-      : PLAYER_DIMENSIONS.cylinderHeight * 0.5;
+  const halfCylHeight = PLAYER_DIMENSIONS.cylinderHeight * 0.5;
 
   return (
     <>
