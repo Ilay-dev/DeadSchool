@@ -15,8 +15,6 @@ import {
 } from '../../store/useGameStore';
 import {
   MAPS,
-  hermiteInterpolatePosition,
-  interpolateTransform,
   resolveArenaCollisions,
   type AABB,
   type WeaponId,
@@ -253,6 +251,7 @@ export function TacticalSoldierMesh({
   moveSpeed = 0,
   animTime = 0,
   soldierSkin = 'default',
+  liveActor,
 }: {
   team: 'alpha' | 'bravo';
   weaponClass?: WeaponId;
@@ -266,6 +265,7 @@ export function TacticalSoldierMesh({
   moveSpeed?: number;
   animTime?: number;
   soldierSkin?: string;
+  liveActor?: RemoteActor;
 }) {
   let baseUniform = team === 'alpha' ? '#2c3847' : '#422c2c';
   let baseVest = '#141619';
@@ -335,6 +335,20 @@ export function TacticalSoldierMesh({
 
   useFrame((state) => {
     const t = animTime > 0 ? animTime : state.clock.elapsedTime;
+    const nowMs = Date.now();
+
+    const activeSpeed = liveActor
+      ? Math.hypot(liveActor.velocity?.[0] || 0, liveActor.velocity?.[2] || 0)
+      : moveSpeed;
+    const activeMoving = liveActor ? activeSpeed > 0.35 : isMoving;
+    const activeSliding = liveActor ? Boolean(liveActor.sliding) : isSliding;
+    const activeCrouching = liveActor ? Boolean(liveActor.crouching) : isCrouching;
+    const activeStunned = liveActor
+      ? Boolean(liveActor.stunnedUntil && nowMs < liveActor.stunnedUntil)
+      : isStunned;
+    const activeHit = liveActor
+      ? Boolean(liveActor.lastHitTime && nowMs - liveActor.lastHitTime < 90)
+      : isHit;
 
     let rootY = 0;
     let rootRotX = 0;
@@ -363,7 +377,7 @@ export function TacticalSoldierMesh({
     let headRotX = 0;
     let headRotY = 0;
 
-    if (isStunned) {
+    if (activeStunned) {
       // 1. Stunned / Frozen animation by Lidl Scanner (10s freeze)
       const twitch = Math.sin(t * 38) * 0.04;
       rootRotZ = twitch;
@@ -371,7 +385,7 @@ export function TacticalSoldierMesh({
       headRotY = twitch * 2.5;
       leftArmRotX = 0.15 + twitch;
       rightArmRotX = 0.25 - twitch;
-    } else if (isSliding) {
+    } else if (activeSliding) {
       // 2. Tactical Combat Slide Pose (Reclined torso, forward extended leg, tuck leg)
       rootY = -0.42;
       rootRotX = 0.06;
@@ -391,11 +405,11 @@ export function TacticalSoldierMesh({
       rightArmRotY = -0.15;
       leftArmRotX = 0.85;
       leftArmRotZ = 0.22;
-    } else if (isCrouching) {
+    } else if (activeCrouching) {
       // 3. Crouching / Sneaking animation
       rootY = -0.34;
       upperBodyRotX = 0.26;
-      if (isMoving) {
+      if (activeMoving) {
         // Sneak stalking strides
         const sneakFreq = 6.8;
         const sneakAmp = 0.38;
@@ -410,9 +424,9 @@ export function TacticalSoldierMesh({
       }
       leftArmRotX = 0.55;
       rightArmRotX = 0.82;
-    } else if (isMoving) {
+    } else if (activeMoving) {
       // 4. Running / Walking Strides
-      const isFast = moveSpeed > 4.6;
+      const isFast = activeSpeed > 4.6;
       const strideFreq = isFast ? 12.0 : 9.6;
       const strideAmp = isFast ? 0.72 : 0.54;
       const stride = Math.sin(t * strideFreq);
@@ -443,7 +457,7 @@ export function TacticalSoldierMesh({
       }
     }
 
-    if (isHit) {
+    if (activeHit) {
       upperBodyRotX -= 0.18;
       rootRotZ += (Math.random() - 0.5) * 0.12;
     }
@@ -890,6 +904,16 @@ function RemoteActorsAndBots({
   const { world, rapier } = useRapier();
 
   const groupRefs = useRef<Record<string, THREE.Group | null>>({});
+  const renderStatesRef = useRef<
+    Record<
+      string,
+      {
+        pos: [number, number, number];
+        yaw: number;
+        initialized: boolean;
+      }
+    >
+  >({});
   const botTimersRef = useRef<Record<string, number>>({});
   const botHeadingsRef = useRef<Record<string, number>>({});
   const losMapRef = useRef<Record<string, boolean>>({});
@@ -898,7 +922,7 @@ function RemoteActorsAndBots({
     const dt = Math.min(rawDelta, 0.05);
     const store = useGameStore.getState();
     const elapsed = state.clock.elapsedTime;
-    const renderTimestamp = performance.now() - 50;
+    const nowPerf = performance.now();
     const nowMs = Date.now();
 
     // Check line-of-sight for each actor so enemies behind walls never show nameplates
@@ -937,7 +961,7 @@ function RemoteActorsAndBots({
       if (isActorStunned) {
         grp.position.set(
           actor.position[0],
-          actor.position[1] + (actor.crouching ? -0.45 : 0),
+          actor.position[1],
           actor.position[2]
         );
         return;
@@ -1146,37 +1170,73 @@ function RemoteActorsAndBots({
             });
           }
         }
-      } else if (!actor.isBot) {
-        // Real LAN / WebRTC Player Hermite Interpolation
-        const snaps = actor.snapshotBuffer;
-        if (snaps && snaps.length >= 2) {
-          const s0 = snaps[snaps.length - 2];
-          const s1 = snaps[snaps.length - 1];
-          const span = Math.max(16, s1.timestamp - s0.timestamp);
-          const tFactor = Math.max(0, Math.min(1, (renderTimestamp - s0.timestamp) / span));
-          actor.position = hermiteInterpolatePosition(
-            s0.position,
-            s0.velocity,
-            s1.position,
-            s1.velocity,
-            tFactor,
-            span / 1000
-          );
-        } else {
-          actor.position = interpolateTransform(
-            actor.position,
-            actor.targetPosition,
-            Math.min(1, dt * 15)
-          );
-        }
-      }
 
-      grp.position.set(
-        actor.position[0],
-        actor.position[1] + (actor.crouching ? -0.45 : 0),
-        actor.position[2]
-      );
-      grp.rotation.set(0, actor.rotation[1], 0);
+        grp.position.set(actor.position[0], actor.position[1], actor.position[2]);
+        grp.rotation.set(0, actor.rotation[1], 0);
+      } else if (!actor.isBot) {
+        // 60-240 FPS Continuous Dead-Reckoning Velocity Extrapolation + Exponential Spring Smoother
+        let rState = renderStatesRef.current[actor.id];
+        if (!rState || !rState.initialized) {
+          rState = {
+            pos: [
+              actor.targetPosition[0],
+              actor.targetPosition[1],
+              actor.targetPosition[2],
+            ],
+            yaw: actor.rotation[1] || 0,
+            initialized: true,
+          };
+          renderStatesRef.current[actor.id] = rState;
+        }
+
+        const packetAgeSec = Math.min(
+          0.12,
+          Math.max(0, (nowPerf - (actor.lastUpdatePerfMs || nowPerf)) / 1000)
+        );
+        const vx = actor.velocity?.[0] || 0;
+        const vy = actor.velocity?.[1] || 0;
+        const vz = actor.velocity?.[2] || 0;
+
+        // Predict current position along velocity vector since last network packet arrived
+        const predX = actor.targetPosition[0] + vx * packetAgeSec;
+        const predY = Math.max(0.08, actor.targetPosition[1] + vy * Math.min(0.05, packetAgeSec));
+        const predZ = actor.targetPosition[2] + vz * packetAgeSec;
+
+        const distError = Math.hypot(
+          predX - rState.pos[0],
+          predY - rState.pos[1],
+          predZ - rState.pos[2]
+        );
+
+        if (distError > 9.5) {
+          // Instant snap ONLY on actual respawn/teleport across the arena
+          rState.pos[0] = predX;
+          rState.pos[1] = predY;
+          rState.pos[2] = predZ;
+        } else {
+          // Advance along live velocity and smoothly converge any residual drift at 60+ FPS
+          rState.pos[0] += vx * dt * 0.45;
+          rState.pos[2] += vz * dt * 0.45;
+          rState.pos[0] = THREE.MathUtils.damp(rState.pos[0], predX, 20, dt);
+          rState.pos[1] = THREE.MathUtils.damp(rState.pos[1], predY, 24, dt);
+          rState.pos[2] = THREE.MathUtils.damp(rState.pos[2], predZ, 20, dt);
+        }
+
+        // Shortest-arc angular yaw interpolation (prevents 360-degree spin at +/-PI boundary)
+        const targetYaw = actor.rotation[1] || 0;
+        const angleDiff = Math.atan2(
+          Math.sin(targetYaw - rState.yaw),
+          Math.cos(targetYaw - rState.yaw)
+        );
+        rState.yaw = THREE.MathUtils.damp(rState.yaw, rState.yaw + angleDiff, 24, dt);
+
+        actor.position[0] = rState.pos[0];
+        actor.position[1] = rState.pos[1];
+        actor.position[2] = rState.pos[2];
+
+        grp.position.set(rState.pos[0], rState.pos[1], rState.pos[2]);
+        grp.rotation.set(0, rState.yaw, 0);
+      }
     });
   });
 
@@ -1203,9 +1263,16 @@ function RemoteActorsAndBots({
           <group
             key={actor.id}
             ref={(el) => {
+              if (el && !groupRefs.current[actor.id]) {
+                el.position.set(
+                  actor.position[0],
+                  actor.position[1],
+                  actor.position[2]
+                );
+                el.rotation.set(0, actor.rotation[1] || 0, 0);
+              }
               groupRefs.current[actor.id] = el;
             }}
-            position={actor.position}
             userData={{ actorId: actor.id }}
           >
             <TacticalSoldierMesh
@@ -1218,6 +1285,7 @@ function RemoteActorsAndBots({
               isSliding={isSliding}
               isCrouching={isCrouching}
               moveSpeed={speed}
+              liveActor={actor}
             />
 
             {screen === 'playing' && (

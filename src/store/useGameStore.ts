@@ -141,6 +141,7 @@ export interface RemoteActor {
   botArchetype?: 'rusher' | 'strafer' | 'anchor';
   waypointIndex?: number;
   lastHitTime?: number;
+  lastUpdatePerfMs?: number;
   snapshotBuffer?: TransformSnapshot[];
 }
 
@@ -1512,44 +1513,79 @@ export const useGameStore = create<GameStoreState>()(
                   kills: meta?.kills ?? 0,
                   deaths: meta?.deaths ?? 0,
                   ping: 14,
-                  position,
-                  targetPosition: position,
-                  velocity,
-                  rotation,
+                  position: [...position] as [number, number, number],
+                  targetPosition: [...position] as [number, number, number],
+                  velocity: [...velocity] as [number, number, number],
+                  rotation: [...rotation] as [number, number],
                   crouching,
                   sliding,
                   ads,
                   ridingScooter,
+                  lastUpdatePerfMs: now,
                   snapshotBuffer: [snap],
                 },
               },
             };
           }
 
-          const nextBuffer = [...(existing.snapshotBuffer || []).slice(-8), snap];
+          const nextName = playerName || existing.name;
+          const nextTeam = team || existing.team;
+          const nextReady = meta?.ready ?? existing.ready;
+          const nextHp = typeof meta?.hp === 'number' ? meta.hp : existing.hp;
+          const nextMaxHp = typeof meta?.maxHp === 'number' ? meta.maxHp : existing.maxHp;
+          const nextKills = typeof meta?.kills === 'number' ? meta.kills : existing.kills;
+          const nextDeaths = typeof meta?.deaths === 'number' ? meta.deaths : existing.deaths;
+          const nextScore = typeof meta?.score === 'number' ? meta.score : existing.score;
+
+          // Mutate high-frequency 60Hz transform fields in-place so useFrame reads them immediately
+          // without forcing React to re-render the entire 3D scene tree 60 times a second!
+          existing.targetPosition = position;
+          existing.velocity = velocity;
+          existing.rotation = rotation;
+          existing.crouching = crouching;
+          existing.sliding = sliding;
+          existing.ads = ads;
+          existing.ridingScooter = ridingScooter;
+          existing.lastUpdatePerfMs = now;
+          if (!existing.snapshotBuffer) {
+            existing.snapshotBuffer = [snap];
+          } else {
+            existing.snapshotBuffer.push(snap);
+            if (existing.snapshotBuffer.length > 10) {
+              existing.snapshotBuffer.shift();
+            }
+          }
+
+          // Only trigger a React state re-render if UI/HUD metadata actually changed
+          const metadataChanged =
+            existing.name !== nextName ||
+            existing.team !== nextTeam ||
+            existing.weaponClass !== weaponClass ||
+            existing.ready !== nextReady ||
+            Math.round(existing.hp) !== Math.round(nextHp) ||
+            existing.maxHp !== nextMaxHp ||
+            existing.kills !== nextKills ||
+            existing.deaths !== nextDeaths ||
+            existing.score !== nextScore;
+
+          if (!metadataChanged) {
+            return state;
+          }
+
+          existing.name = nextName;
+          existing.team = nextTeam;
+          existing.weaponClass = weaponClass;
+          existing.ready = nextReady;
+          existing.hp = nextHp;
+          existing.maxHp = nextMaxHp;
+          existing.kills = nextKills;
+          existing.deaths = nextDeaths;
+          existing.score = nextScore;
+
           return {
             remotePlayers: {
               ...state.remotePlayers,
-              [id]: {
-                ...existing,
-                name: playerName || existing.name,
-                team: team || existing.team,
-                targetPosition: position,
-                velocity,
-                rotation,
-                crouching,
-                sliding,
-                ads,
-                weaponClass,
-                ridingScooter,
-                ready: meta?.ready ?? existing.ready,
-                hp: typeof meta?.hp === 'number' ? meta.hp : existing.hp,
-                maxHp: typeof meta?.maxHp === 'number' ? meta.maxHp : existing.maxHp,
-                kills: typeof meta?.kills === 'number' ? meta.kills : existing.kills,
-                deaths: typeof meta?.deaths === 'number' ? meta.deaths : existing.deaths,
-                score: typeof meta?.score === 'number' ? meta.score : existing.score,
-                snapshotBuffer: nextBuffer,
-              },
+              [id]: { ...existing },
             },
           };
         }),

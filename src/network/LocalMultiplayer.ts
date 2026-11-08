@@ -5,6 +5,7 @@ import type { GameModeId, WeaponId } from '../game/rules';
 export interface NetworkTransformPacket {
   type: 'player:transform' | 'player:moved';
   msgId?: string;
+  seq?: number;
   playerId: string;
   peerId?: string;
   playerName: string;
@@ -159,6 +160,7 @@ class LocalMultiplayerManager {
   private relayReconnectTimeout: number | null = null;
   private mqttRxBuffer: Uint8Array = new Uint8Array(0);
   private packetCounter = 1;
+  private localSeq = 1;
 
   // Direct WebRTC PeerJS Mesh
   private peer: Peer | null = null;
@@ -167,6 +169,7 @@ class LocalMultiplayerManager {
   private pendingDialPeers: Set<string> = new Set();
   private peerToPlayerId: Map<string, string> = new Map();
   private lastSeenMap: Map<string, number> = new Map();
+  private lastSeqMap: Map<string, number> = new Map();
   private processedMsgIds: Set<string> = new Set();
   private processedMsgQueue: string[] = [];
 
@@ -175,6 +178,8 @@ class LocalMultiplayerManager {
   private cleanupInterval: number | null = null;
   private reconnectTimeout: number | null = null;
   private lastIdleBroadcastAt = 0;
+  private lastTransformSentPerf = 0;
+  private lastRelayTransformSentPerf = 0;
   private lastRoomDirectoryAnnounceAt = 0;
 
   private latestLocalPosition: [number, number, number] = [2.1, 0.15, 32.5];
@@ -715,27 +720,22 @@ class LocalMultiplayerManager {
     this.broadcastSyncRequest(cleanCode);
   }
 
-  private dialRemotePeerIfNeeded(remotePeerId?: string, remotePlayerId?: string) {
+  private dialRemotePeerIfNeeded(remotePeerId?: string) {
     if (!remotePeerId || !this.peer || this.peer.destroyed || !this.myPeerId) return;
     if (remotePeerId === this.myPeerId) return;
     if (this.connections.has(remotePeerId) || this.pendingDialPeers.has(remotePeerId)) return;
 
-    const myId = useGameStore.getState().playerId;
-    // Deterministic dialer election (or dial if we haven't connected after seeing them)
-    if (remotePlayerId && myId > remotePlayerId) {
-      return;
-    }
-
     try {
       this.pendingDialPeers.add(remotePeerId);
+      // Use reliable: false for ultra-low-latency 60 FPS UDP DataChannel streaming (no TCP head-of-line blocking!)
       const conn = this.peer.connect(remotePeerId, {
-        reliable: true,
+        reliable: false,
         serialization: 'json',
       });
       this.registerDataConnection(conn);
       window.setTimeout(() => {
         this.pendingDialPeers.delete(remotePeerId);
-      }, 6000);
+      }, 2500);
     } catch {
       this.pendingDialPeers.delete(remotePeerId);
     }
@@ -797,28 +797,30 @@ class LocalMultiplayerManager {
   }
 
   private sendPacketOverAllTransports(payload: Record<string, any>) {
+    const isTransform =
+      payload.type === 'player:moved' || payload.type === 'player:transform';
     const packetWithId = {
       ...payload,
       msgId: payload.msgId || this.nextMsgId(),
+      seq: isTransform ? ++this.localSeq : payload.seq,
       peerId: this.myPeerId || undefined,
     };
     this.isDuplicateMsgId(packetWithId.msgId);
 
-    // 1. Global WSS Cloud Relay (works across all networks & firewalls)
-    this.publishToRelayRoom(packetWithId);
-
-    // 2. Direct WebRTC P2P Mesh DataChannels
+    // 1. Direct WebRTC P2P Mesh DataChannels (Full 60+ FPS zero-latency UDP streaming)
+    let sentOverDirectWebRtc = false;
     this.connections.forEach((conn) => {
       if (conn.open) {
         try {
           conn.send(packetWithId);
+          sentOverDirectWebRtc = true;
         } catch {
           // Ignore
         }
       }
     });
 
-    // 3. Same-PC BroadcastChannel
+    // 2. Same-PC BroadcastChannel (Full 60+ FPS zero-latency local streaming)
     if (this.broadcastChannel) {
       try {
         this.broadcastChannel.postMessage(packetWithId);
@@ -827,13 +829,25 @@ class LocalMultiplayerManager {
       }
     }
 
-    // 4. Optional Local LAN WebSocket
+    // 3. Optional Local LAN WebSocket (Full 60+ FPS LAN streaming)
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       try {
         this.ws.send(JSON.stringify(packetWithId));
       } catch {
         // Ignore
       }
+    }
+
+    // 4. Global WSS Cloud Relay (Works across all firewalls/NATs).
+    // Streams at 60 FPS when no direct WebRTC connection is open yet, or 30 FPS backup when WebRTC is active
+    // to prevent public TCP broker head-of-line queue buildup.
+    const nowPerf = performance.now();
+    const minRelayIntervalMs = sentOverDirectWebRtc ? 32 : 16;
+    if (!isTransform || nowPerf - this.lastRelayTransformSentPerf >= minRelayIntervalMs) {
+      if (isTransform) {
+        this.lastRelayTransformSentPerf = nowPerf;
+      }
+      this.publishToRelayRoom(packetWithId);
     }
   }
 
@@ -912,7 +926,7 @@ class LocalMultiplayerManager {
 
     // Establish direct P2P WebRTC connection if peerId is advertised
     if (msg.peerId && msg.playerId) {
-      this.dialRemotePeerIfNeeded(msg.peerId, msg.playerId);
+      this.dialRemotePeerIfNeeded(msg.peerId);
     }
 
     if (msg.type === 'room:sync_request') {
@@ -924,6 +938,7 @@ class LocalMultiplayerManager {
     if (msg.type === 'player:leave' && msg.playerId) {
       store.removeRemotePlayer(msg.playerId);
       this.lastSeenMap.delete(msg.playerId);
+      this.lastSeqMap.delete(msg.playerId);
       this.updateConnectedPeerCount();
       return;
     }
@@ -966,6 +981,15 @@ class LocalMultiplayerManager {
       this.updateConnectedPeerCount();
     } else if (msg.type === 'player:moved' || msg.type === 'player:transform') {
       if (msg.playerId && msg.playerId !== store.playerId) {
+        // Reject out-of-order / delayed packets from slower fallback transports
+        if (typeof msg.seq === 'number') {
+          const prevSeq = this.lastSeqMap.get(msg.playerId) || 0;
+          if (msg.seq <= prevSeq && prevSeq - msg.seq < 50000) {
+            return;
+          }
+          this.lastSeqMap.set(msg.playerId, msg.seq);
+        }
+
         const isFirstSeen = !store.remotePlayers[msg.playerId];
 
         // Auto-balance team in TDM if two players both defaulted to the same team
@@ -1069,9 +1093,58 @@ class LocalMultiplayerManager {
     rotation: [number, number],
     velocity: [number, number, number] = [0, 0, 0]
   ) {
-    this.latestLocalPosition = position;
-    this.latestLocalRotation = rotation;
-    this.latestLocalVelocity = velocity;
+    this.latestLocalPosition = [
+      Math.round(position[0] * 1000) / 1000,
+      Math.round(position[1] * 1000) / 1000,
+      Math.round(position[2] * 1000) / 1000,
+    ];
+    this.latestLocalRotation = [
+      Math.round(rotation[0] * 1000) / 1000,
+      Math.round(rotation[1] * 1000) / 1000,
+    ];
+    this.latestLocalVelocity = [
+      Math.round(velocity[0] * 100) / 100,
+      Math.round(velocity[1] * 100) / 100,
+      Math.round(velocity[2] * 100) / 100,
+    ];
+
+    // Stream directly from the 60+ FPS useFrame loop with zero setInterval timer jitter!
+    const nowPerf = performance.now();
+    if (nowPerf - this.lastTransformSentPerf >= 15.5) {
+      this.lastTransformSentPerf = nowPerf;
+      this.dispatchCurrentTransformPacket();
+    }
+  }
+
+  private dispatchCurrentTransformPacket() {
+    const store = useGameStore.getState();
+    const packet: NetworkTransformPacket & { roomCode: string } = {
+      type: 'player:moved',
+      msgId: this.nextMsgId(),
+      roomCode: store.roomCode || 'WORLD',
+      playerId: store.playerId,
+      peerId: this.myPeerId || undefined,
+      playerName: store.playerName,
+      team: store.playerTeam,
+      position: this.latestLocalPosition,
+      velocity: store.screen === 'playing' ? this.latestLocalVelocity : [0, 0, 0],
+      rotation: this.latestLocalRotation,
+      crouching: store.isCrouching,
+      sliding: store.isSliding,
+      ads: store.isAds,
+      ridingScooter: Boolean(store.ridingScooterId),
+      weaponClass: store.selectedClass,
+      hp: Math.round(store.hp),
+      maxHp: store.maxHp,
+      kills: store.localKills,
+      deaths: store.localDeaths,
+      score: store.localScore,
+      ready: store.isReady,
+      modeId: store.selectedModeId,
+      mapId: store.selectedMapId,
+    };
+
+    this.sendPacketOverAllTransports(packet);
   }
 
   /**
@@ -1090,6 +1163,7 @@ class LocalMultiplayerManager {
           if (lastSeen > 0 && now - lastSeen > 12000) {
             store.removeRemotePlayer(actor.id);
             this.lastSeenMap.delete(actor.id);
+            this.lastSeqMap.delete(actor.id);
             removedAny = true;
           }
         }
@@ -1101,49 +1175,26 @@ class LocalMultiplayerManager {
   }
 
   /**
-   * Network tick loop:
-   * - Sends transform updates at 25Hz (40ms) during active gameplay.
-   * - Sends presence heartbeats every 400ms across ALL other screens (select_class,
-   *   match_lobby, paused, gameover, main_menu) so players NEVER falsely disconnect!
+   * 60+ FPS (16ms) network tick & presence loop:
+   * - If `updateLocalTransform` is already streaming from `useFrame`, skips duplicate sends.
+   * - Sends presence heartbeats across ALL screens (select_class, match_lobby, paused, gameover)
+   *   so players never falsely disconnect.
    */
   private startTickLoop() {
     if (this.tickInterval) window.clearInterval(this.tickInterval);
     this.tickInterval = window.setInterval(() => {
       const store = useGameStore.getState();
       const now = Date.now();
+      const nowPerf = performance.now();
 
       if (store.screen !== 'playing') {
-        if (now - this.lastIdleBroadcastAt < 400) return;
+        if (now - this.lastIdleBroadcastAt < 350) return;
         this.lastIdleBroadcastAt = now;
+        this.dispatchCurrentTransformPacket();
+      } else if (nowPerf - this.lastTransformSentPerf >= 18) {
+        this.lastTransformSentPerf = nowPerf;
+        this.dispatchCurrentTransformPacket();
       }
-
-      const packet: NetworkTransformPacket & { roomCode: string } = {
-        type: 'player:moved',
-        msgId: this.nextMsgId(),
-        roomCode: store.roomCode || 'WORLD',
-        playerId: store.playerId,
-        peerId: this.myPeerId || undefined,
-        playerName: store.playerName,
-        team: store.playerTeam,
-        position: this.latestLocalPosition,
-        velocity: store.screen === 'playing' ? this.latestLocalVelocity : [0, 0, 0],
-        rotation: this.latestLocalRotation,
-        crouching: store.isCrouching,
-        sliding: store.isSliding,
-        ads: store.isAds,
-        ridingScooter: Boolean(store.ridingScooterId),
-        weaponClass: store.selectedClass,
-        hp: store.hp,
-        maxHp: store.maxHp,
-        kills: store.localKills,
-        deaths: store.localDeaths,
-        score: store.localScore,
-        ready: store.isReady,
-        modeId: store.selectedModeId,
-        mapId: store.selectedMapId,
-      };
-
-      this.sendPacketOverAllTransports(packet);
 
       // Periodically announce active room in the global server browser directory
       if (
@@ -1177,7 +1228,7 @@ class LocalMultiplayerManager {
           // Ignore
         }
       }
-    }, 40);
+    }, 16);
   }
 
   public sendHitscanEvent(
