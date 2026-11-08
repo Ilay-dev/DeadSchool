@@ -35,6 +35,18 @@ export function MatchLobbyScreen() {
 
   const activeMap = MAPS.find((m) => m.id === selectedMapId) || MAPS[0];
 
+  const isFfa = selectedModeId === 'FFA';
+
+  const allFfaPlayers = [
+    { id: 'local', name: playerName, ready: isReady, ping: 12 },
+    ...Object.values(remotePlayers).map((p) => ({
+      id: p.id,
+      name: p.name,
+      ready: p.ready,
+      ping: p.ping || 14,
+    })),
+  ];
+
   const alphaPlayers = [
     ...(playerTeam === 'alpha'
       ? [{ id: 'local', name: playerName, ready: isReady }]
@@ -169,26 +181,28 @@ export function MatchLobbyScreen() {
             </div>
           )}
 
-          {/* Two-Column Team Alpha vs Team Bravo Lists */}
-          <div className="w-full grid grid-cols-2 gap-5 min-h-[195px]">
-            {/* Team Alpha Column */}
-            <div className="space-y-1.5">
-              <div className="bg-[#2b7fff] py-2 text-center text-[20px] font-extrabold text-white shadow">
-                Team Alpha (Max 3)
+          {/* Lobby Player Roster: Single unified list for FFA, two-column teams for TDM/BOTS */}
+          {isFfa ? (
+            <div className="w-full space-y-2 min-h-[195px]">
+              <div className="bg-gradient-to-r from-amber-600 via-amber-500 to-amber-600 py-2.5 text-center text-[20px] font-black text-white shadow uppercase tracking-wider flex items-center justify-center gap-3">
+                <span>⚔️ FREE FOR ALL — ALLE GEGEN ALLE</span>
+                <span className="text-xs bg-black/40 px-2.5 py-0.5 rounded font-mono">
+                  {allFfaPlayers.length} / 12 SPIELER
+                </span>
               </div>
-              <div className="space-y-1">
-                {alphaPlayers.map((p, idx) => (
+              <div className="grid grid-cols-2 gap-2.5 max-h-[220px] overflow-y-auto">
+                {allFfaPlayers.map((p, idx) => (
                   <div
                     key={p.id}
-                    className="flex items-center justify-between bg-[#2b7fff]/20 border border-[#2b7fff]/60 px-3.5 py-2"
+                    className="flex items-center justify-between bg-black/55 border border-amber-500/30 px-3.5 py-2.5"
                   >
                     <div className="flex items-center gap-3">
-                      <span className="text-[18px] font-extrabold text-white/60 font-mono-num">
-                        {idx + 1}.
+                      <span className="text-[17px] font-black text-amber-400 font-mono-num">
+                        #{idx + 1}
                       </span>
                       <div>
                         <div className="text-[15px] font-extrabold text-white leading-tight">
-                          {p.name}
+                          {p.name} {p.id === 'local' && '(Du)'}
                         </div>
                         <div
                           className={`text-[10px] font-black uppercase ${
@@ -199,57 +213,97 @@ export function MatchLobbyScreen() {
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Team Bravo Column */}
-            <div className="space-y-1.5">
-              <div className="bg-[#e74c3c] py-2 text-center text-[20px] font-extrabold text-white shadow">
-                Team Bravo (Max 3)
-              </div>
-              <div className="space-y-1">
-                {bravoPlayers.map((p, idx) => (
-                  <div
-                    key={p.id}
-                    className="flex items-center justify-between bg-[#e74c3c]/20 border border-[#e74c3c]/60 px-3.5 py-2"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="text-[18px] font-extrabold text-white/60 font-mono-num">
-                        {idx + 1}.
-                      </span>
-                      <div>
-                        <div className="text-[15px] font-extrabold text-white leading-tight">
-                          {p.name}
-                        </div>
-                        <div
-                          className={`text-[10px] font-black uppercase ${
-                            p.ready ? 'text-[#4ade80]' : 'text-[#ef4444]'
-                          }`}
-                        >
-                          {p.ready ? 'READY' : 'NOT READY'}
-                        </div>
-                      </div>
+                    <div className="text-[11px] font-mono text-white/50">
+                      {p.ping}ms
                     </div>
                   </div>
                 ))}
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="w-full grid grid-cols-2 gap-5 min-h-[195px]">
+              {/* Team Alpha Column */}
+              <div className="space-y-1.5">
+                <div className="bg-[#2b7fff] py-2 text-center text-[20px] font-extrabold text-white shadow">
+                  Team Alpha (Max 3)
+                </div>
+                <div className="space-y-1">
+                  {alphaPlayers.map((p, idx) => (
+                    <div
+                      key={p.id}
+                      className="flex items-center justify-between bg-[#2b7fff]/20 border border-[#2b7fff]/60 px-3.5 py-2"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-[18px] font-extrabold text-white/60 font-mono-num">
+                          {idx + 1}.
+                        </span>
+                        <div>
+                          <div className="text-[15px] font-extrabold text-white leading-tight">
+                            {p.name}
+                          </div>
+                          <div
+                            className={`text-[10px] font-black uppercase ${
+                              p.ready ? 'text-[#4ade80]' : 'text-[#ef4444]'
+                            }`}
+                          >
+                            {p.ready ? 'READY' : 'NOT READY'}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
 
-          {/* Switch Teams | Spectate | Copy Code Row */}
+              {/* Team Bravo Column */}
+              <div className="space-y-1.5">
+                <div className="bg-[#e74c3c] py-2 text-center text-[20px] font-extrabold text-white shadow">
+                  Team Bravo (Max 3)
+                </div>
+                <div className="space-y-1">
+                  {bravoPlayers.map((p, idx) => (
+                    <div
+                      key={p.id}
+                      className="flex items-center justify-between bg-[#e74c3c]/20 border border-[#e74c3c]/60 px-3.5 py-2"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-[18px] font-extrabold text-white/60 font-mono-num">
+                          {idx + 1}.
+                        </span>
+                        <div>
+                          <div className="text-[15px] font-extrabold text-white leading-tight">
+                            {p.name}
+                          </div>
+                          <div
+                            className={`text-[10px] font-black uppercase ${
+                              p.ready ? 'text-[#4ade80]' : 'text-[#ef4444]'
+                            }`}
+                          >
+                            {p.ready ? 'READY' : 'NOT READY'}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Action Row: Hide "Switch Teams" in FFA */}
           <div className="flex items-center gap-3 pt-1">
-            <button
-              type="button"
-              onClick={() => {
-                switchTeam();
-                multiplayerManager.sendLobbySync();
-              }}
-              className="w-42 py-2.5 bg-[#3d3d3d]/85 hover:bg-[#525252] text-white/85 hover:text-white font-extrabold text-[17px] transition-colors cursor-pointer"
-            >
-              Switch Teams
-            </button>
+            {!isFfa && (
+              <button
+                type="button"
+                onClick={() => {
+                  switchTeam();
+                  multiplayerManager.sendLobbySync();
+                }}
+                className="w-42 py-2.5 bg-[#3d3d3d]/85 hover:bg-[#525252] text-white/85 hover:text-white font-extrabold text-[17px] transition-colors cursor-pointer"
+              >
+                Switch Teams
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setScreen('playing')}

@@ -102,15 +102,16 @@ export function PlayerController({
   const isCrouching = useGameStore((s) => s.isCrouching);
   const isSliding = useGameStore((s) => s.isSliding);
 
-  // Initialize Rapier KinematicCharacterController with 0.35m step climbing & ground snapping
+  // Initialize Rapier KinematicCharacterController with 0.40m step climbing & smooth wall sliding
   useEffect(() => {
     if (!world) return;
     try {
-      const controller = world.createCharacterController(0.01);
+      const controller = world.createCharacterController(0.03);
       controller.setUp({ x: 0, y: 1, z: 0 });
-      controller.setMaxSlopeClimbAngle((50 * Math.PI) / 180);
-      controller.setMinSlopeSlideAngle((35 * Math.PI) / 180);
-      controller.enableAutostep(PLAYER_DIMENSIONS.maxStepHeight, 0.2, true);
+      controller.setMaxSlopeClimbAngle((55 * Math.PI) / 180);
+      controller.setMinSlopeSlideAngle((45 * Math.PI) / 180);
+      // Min step width 0.05m allows effortlessly stepping up narrow stair treads without snagging
+      controller.enableAutostep(PLAYER_DIMENSIONS.maxStepHeight, 0.05, false);
       controller.enableSnapToGround(PLAYER_DIMENSIONS.maxStepHeight);
       controller.setApplyImpulsesToDynamicBodies(true);
       characterControllerRef.current = controller;
@@ -686,6 +687,11 @@ export function PlayerController({
 
     if (controller && collider && rb) {
       try {
+        if (velocityYRef.current > 0) {
+          controller.disableSnapToGround();
+        } else {
+          controller.enableSnapToGround(PLAYER_DIMENSIONS.maxStepHeight);
+        }
         controller.computeColliderMovement(collider, {
           x: desiredDx,
           y: desiredDy,

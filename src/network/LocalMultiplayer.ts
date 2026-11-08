@@ -3,7 +3,7 @@ import { useGameStore, type RemoteActor } from '../store/useGameStore';
 import type { WeaponId } from '../game/rules';
 
 export interface NetworkTransformPacket {
-  type: 'player:transform';
+  type: 'player:transform' | 'player:moved';
   playerId: string;
   playerName: string;
   team: 'alpha' | 'bravo';
@@ -15,6 +15,7 @@ export interface NetworkTransformPacket {
   ads: boolean;
   ridingScooter: boolean;
   weaponClass: WeaponId;
+  roomCode?: string;
 }
 
 export interface ActiveRoomSummary {
@@ -35,12 +36,16 @@ const GLOBAL_ICE_SERVERS = [
 
 class LocalMultiplayerManager {
   private ws: WebSocket | null = null;
+  private wsAttempts = 0;
   private peer: Peer | null = null;
-  private unreliableConnections: Map<string, DataConnection> = new Map();
-  private reliableConnections: Map<string, DataConnection> = new Map();
+  private connections: Map<string, DataConnection> = new Map();
+  private peerToPlayerId: Map<string, string> = new Map();
+  private lastSeenMap: Map<string, number> = new Map();
   private broadcastChannel: BroadcastChannel | null = null;
   private tickInterval: number | null = null;
+  private cleanupInterval: number | null = null;
   private reconnectTimeout: number | null = null;
+  private hostTimeout: number | null = null;
   private latestLocalPosition: [number, number, number] = [2.1, 0.15, 32.5];
   private latestLocalVelocity: [number, number, number] = [0, 0, 0];
   private latestLocalRotation: [number, number] = [0, Math.PI];
@@ -51,6 +56,7 @@ class LocalMultiplayerManager {
     this.connectWebSocket();
     this.setupBroadcastChannel();
     this.startTickLoop();
+    this.startPeerCleanupLoop();
     const state = useGameStore.getState();
     this.initWebRtcPeer(state.roomCode || 'WORLD', state.isHost);
   }
@@ -65,6 +71,18 @@ class LocalMultiplayerManager {
   }
 
   public async fetchLanInfo(): Promise<ActiveRoomSummary[]> {
+    const isStaticHost =
+      typeof window !== 'undefined' &&
+      (window.location.hostname.includes('github.io') ||
+        window.location.hostname.includes('vercel.app') ||
+        window.location.hostname.includes('netlify.app') ||
+        window.location.protocol === 'file:');
+
+    if (isStaticHost) {
+      useGameStore.getState().setLanInfo(window.location.hostname, 'webrtc-p2p');
+      return this.activeRooms;
+    }
+
     try {
       const res = await fetch('/api/lan-info');
       if (res.ok) {
@@ -77,18 +95,40 @@ class LocalMultiplayerManager {
         }
       }
     } catch {
-      useGameStore.getState().setLanInfo(
-        window.location.hostname || '192.168.1.100',
-        'offline-lan'
-      );
+      useGameStore
+        .getState()
+        .setLanInfo(window.location.hostname || '192.168.1.100', 'offline-lan');
     }
     return this.activeRooms;
   }
 
+  /**
+   * Connects to a local/LAN Node WebSocket server if one exists.
+   * On static hosts (like GitHub Pages) or after 2 failed attempts, WebSocket connection
+   * is skipped cleanly without flooding the browser console with errors.
+   */
   public connectWebSocket(customHostIp?: string) {
     if (this.reconnectTimeout) {
       window.clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
+    }
+
+    const isStaticHost =
+      typeof window !== 'undefined' &&
+      (window.location.hostname.includes('github.io') ||
+        window.location.hostname.includes('vercel.app') ||
+        window.location.hostname.includes('netlify.app') ||
+        window.location.protocol === 'file:');
+
+    if (isStaticHost && !customHostIp) {
+      // GitHub Pages is a static file host with no backend. WebRTC P2P + BroadcastChannel is used.
+      useGameStore.getState().setLanInfo(window.location.hostname, 'webrtc-p2p');
+      return;
+    }
+
+    if (this.wsAttempts >= 2 && !customHostIp) {
+      useGameStore.getState().setLanInfo(window.location.hostname, 'webrtc-p2p');
+      return;
     }
 
     if (
@@ -104,8 +144,11 @@ class LocalMultiplayerManager {
       const wsUrl = `${protocol}//${host}/ws`;
       const socket = new WebSocket(wsUrl);
       this.ws = socket;
+      this.wsAttempts++;
 
       socket.onopen = () => {
+        this.wsAttempts = 0;
+        useGameStore.getState().setLanInfo(host, 'lan-ws');
         this.sendRoomJoinOverWs(useGameStore.getState().isHost);
       };
 
@@ -120,17 +163,22 @@ class LocalMultiplayerManager {
 
       socket.onclose = () => {
         if (this.ws === socket) {
-          this.reconnectTimeout = window.setTimeout(() => {
-            this.connectWebSocket(customHostIp);
-          }, 1800);
+          if (this.wsAttempts < 2) {
+            this.reconnectTimeout = window.setTimeout(() => {
+              this.connectWebSocket(customHostIp);
+            }, 3000);
+          } else {
+            useGameStore.getState().setLanInfo(window.location.hostname, 'webrtc-p2p');
+          }
         }
       };
 
       socket.onerror = () => {
-        // Fallback to BroadcastChannel / WebRTC DataChannel
+        // Fallback cleanly to WebRTC PeerJS
+        useGameStore.getState().setLanInfo(window.location.hostname, 'webrtc-p2p');
       };
     } catch {
-      // WebSocket unavailable
+      useGameStore.getState().setLanInfo(window.location.hostname, 'webrtc-p2p');
     }
   }
 
@@ -154,91 +202,97 @@ class LocalMultiplayerManager {
   }
 
   /**
-   * Joins or hosts a room across both the Global WebSocket Server (/ws) and WebRTC PeerJS DataChannels
-   * so any player anywhere in the world can join via the Global Lobby ("WORLD") or a 5-digit Room Code.
+   * Resilient, serverless WebRTC PeerJS DataChannel multiplayer:
+   * Works anywhere in the world on GitHub Pages or LAN.
+   * Auto-promotes host or joins existing room seamlessly.
    */
-  public initWebRtcPeer(roomCode: string, asHost: boolean) {
+  public initWebRtcPeer(roomCode: string, asHost?: boolean) {
+    if (this.hostTimeout) {
+      window.clearTimeout(this.hostTimeout);
+      this.hostTimeout = null;
+    }
     if (this.peer) {
       this.peer.destroy();
       this.peer = null;
     }
-    this.unreliableConnections.clear();
-    this.reliableConnections.clear();
+    this.connections.clear();
+    this.peerToPlayerId.clear();
 
     const cleanCode =
       roomCode.replace(/[^A-Z0-9_-]/gi, '').toUpperCase().slice(0, 10) || 'WORLD';
-    useGameStore.getState().setRoomCode(cleanCode);
-    useGameStore.getState().setIsHost(asHost);
+    const state = useGameStore.getState();
+    state.setRoomCode(cleanCode);
 
-    // Immediately switch room on the global WebSocket server (/ws)
+    const hostPeerId = `deadschool-room-${cleanCode}`;
+    const clientPeerId = `deadschool-p2p-${cleanCode}-${state.playerId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 7)}`;
+    const shouldHost = asHost ?? state.isHost;
+
+    state.setIsHost(shouldHost);
+
+    // If WS is available, sync room
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.sendRoomJoinOverWs(asHost);
-    } else if (!this.ws || this.ws.readyState !== WebSocket.CONNECTING) {
-      this.connectWebSocket();
+      this.sendRoomJoinOverWs(shouldHost);
     }
 
-    const peerId = asHost
-      ? `deadschool-global-host-${cleanCode}`
-      : `deadschool-global-client-${cleanCode}-${Math.random().toString(36).slice(2, 7)}`;
+    const currentPeerId = shouldHost ? hostPeerId : clientPeerId;
 
     try {
-      const peer = new Peer(peerId, {
+      const peer = new Peer(currentPeerId, {
         config: { iceServers: GLOBAL_ICE_SERVERS },
       });
       this.peer = peer;
 
       peer.on('open', (id) => {
-        useGameStore.getState().setPeerInfo(id, this.unreliableConnections.size + 1);
-        useGameStore.getState().setLanInfo(useGameStore.getState().lanIp, 'webrtc-p2p');
+        state.setPeerInfo(id, this.connections.size + 1);
+        state.setLanInfo(state.lanIp, 'webrtc-p2p');
 
-        if (!asHost) {
-          const hostPeerId = `deadschool-global-host-${cleanCode}`;
-          // Unreliable / Unordered DataChannel for 50Hz movement
-          const moveConn = peer.connect(hostPeerId, {
-            label: 'movement-unreliable',
-            reliable: false,
-            serialization: 'json',
-          });
-          this.registerDataConnection(moveConn, false);
-
-          // Reliable / Ordered DataChannel for chat, kills, stuns, and match events
-          const eventConn = peer.connect(hostPeerId, {
-            label: 'events-reliable',
+        if (!shouldHost) {
+          // Connect to the room host
+          const conn = peer.connect(hostPeerId, {
             reliable: true,
             serialization: 'json',
           });
-          this.registerDataConnection(eventConn, true);
+          this.registerDataConnection(conn);
+
+          // If the host isn't open after 1500ms, become the room host automatically!
+          this.hostTimeout = window.setTimeout(() => {
+            if (this.connections.size === 0 && !state.isHost) {
+              this.initWebRtcPeer(cleanCode, true);
+            }
+          }, 1500);
         }
       });
 
       peer.on('connection', (conn) => {
-        const isReliable = conn.label === 'events-reliable' || conn.reliable;
-        this.registerDataConnection(conn, isReliable);
+        this.registerDataConnection(conn);
       });
 
-      peer.on('error', () => {
-        // If another player is already the PeerJS host for `WORLD`, automatically connect as client!
-        if (asHost) {
+      peer.on('error', (err: any) => {
+        // If 'unavailable-id' happened while attempting to host, someone else is already hosting!
+        // Immediately connect as client!
+        if (shouldHost && err?.type === 'unavailable-id') {
           setTimeout(() => {
             if (useGameStore.getState().roomCode === cleanCode) {
               this.initWebRtcPeer(cleanCode, false);
             }
-          }, 300);
+          }, 200);
         }
       });
     } catch {
-      // Ignore PeerJS init failure in isolated sandboxes
+      // Ignore in sandbox environments
     }
   }
 
-  private registerDataConnection(conn: DataConnection, isReliable: boolean) {
-    const targetMap = isReliable ? this.reliableConnections : this.unreliableConnections;
-
+  private registerDataConnection(conn: DataConnection) {
     conn.on('open', () => {
-      targetMap.set(conn.peer, conn);
+      if (this.hostTimeout) {
+        window.clearTimeout(this.hostTimeout);
+        this.hostTimeout = null;
+      }
+      this.connections.set(conn.peer, conn);
       useGameStore
         .getState()
-        .setPeerInfo(this.peer?.id || '', this.unreliableConnections.size + 1);
+        .setPeerInfo(this.peer?.id || '', this.connections.size + 1);
 
       const s = useGameStore.getState();
       conn.send({
@@ -251,17 +305,40 @@ class LocalMultiplayerManager {
         velocity: this.latestLocalVelocity,
         rotation: this.latestLocalRotation,
         crouching: s.isCrouching,
+        sliding: s.isSliding,
         ads: s.isAds,
         ridingScooter: Boolean(s.ridingScooterId),
         weaponClass: s.selectedClass,
       });
+
+      // If this node is host, advertise room settings
+      if (s.isHost) {
+        conn.send({
+          type: 'lobby:update',
+          roomCode: s.roomCode,
+          playerName: s.playerName,
+          mapId: s.selectedMapId,
+          modeId: s.selectedModeId,
+          isPublic: s.isPublicRoom,
+          team: s.playerTeam,
+          ready: s.isReady,
+          weaponClass: s.selectedClass,
+        });
+      }
     });
 
     conn.on('data', (data) => {
       if (data && typeof data === 'object') {
-        this.handleIncomingPacket(data as Record<string, unknown>);
+        const msg = data as Record<string, any>;
+        if (msg.playerId) {
+          this.peerToPlayerId.set(conn.peer, msg.playerId);
+          this.lastSeenMap.set(msg.playerId, Date.now());
+        }
+        this.handleIncomingPacket(msg);
+
+        // Host relays packets to all other open peer connections
         if (useGameStore.getState().isHost) {
-          targetMap.forEach((otherConn, peerKey) => {
+          this.connections.forEach((otherConn, peerKey) => {
             if (peerKey !== conn.peer && otherConn.open) {
               otherConn.send(data);
             }
@@ -271,10 +348,20 @@ class LocalMultiplayerManager {
     });
 
     conn.on('close', () => {
-      targetMap.delete(conn.peer);
+      const remotePlayerId = this.peerToPlayerId.get(conn.peer);
+      if (remotePlayerId) {
+        useGameStore.getState().removeRemotePlayer(remotePlayerId);
+        this.lastSeenMap.delete(remotePlayerId);
+        this.peerToPlayerId.delete(conn.peer);
+      }
+      this.connections.delete(conn.peer);
       useGameStore
         .getState()
-        .setPeerInfo(this.peer?.id || '', this.unreliableConnections.size + 1);
+        .setPeerInfo(this.peer?.id || '', this.connections.size + 1);
+    });
+
+    conn.on('error', () => {
+      this.connections.delete(conn.peer);
     });
   }
 
@@ -283,12 +370,19 @@ class LocalMultiplayerManager {
    */
   private setupBroadcastChannel() {
     if (typeof BroadcastChannel === 'undefined') return;
-    this.broadcastChannel = new BroadcastChannel('deadschool_lan_channel');
-    this.broadcastChannel.onmessage = (ev) => {
-      if (ev.data && typeof ev.data === 'object') {
-        this.handleIncomingPacket(ev.data);
-      }
-    };
+    try {
+      this.broadcastChannel = new BroadcastChannel('deadschool_multiplayer_channel');
+      this.broadcastChannel.onmessage = (ev) => {
+        if (ev.data && typeof ev.data === 'object') {
+          if (ev.data.playerId) {
+            this.lastSeenMap.set(ev.data.playerId, Date.now());
+          }
+          this.handleIncomingPacket(ev.data);
+        }
+      };
+    } catch {
+      // BroadcastChannel unavailable
+    }
   }
 
   private handleIncomingPacket(msg: Record<string, any>) {
@@ -296,6 +390,12 @@ class LocalMultiplayerManager {
 
     // Filter packets by roomCode if specified
     if (msg.roomCode && msg.roomCode !== store.roomCode) {
+      return;
+    }
+
+    if (msg.type === 'player:leave' && msg.playerId) {
+      store.removeRemotePlayer(msg.playerId);
+      this.lastSeenMap.delete(msg.playerId);
       return;
     }
 
@@ -313,7 +413,7 @@ class LocalMultiplayerManager {
           playersMap[p.id] = {
             id: p.id,
             name: p.name || `Player_${String(p.id).slice(0, 4)}`,
-            team: p.team || 'bravo',
+            team: p.team || (store.selectedModeId === 'FFA' ? 'bravo' : 'alpha'),
             weaponClass: p.weaponClass || 'assault',
             ready: Boolean(p.ready),
             hp: Number(p.hp) || 100,
@@ -345,9 +445,16 @@ class LocalMultiplayerManager {
           msg.velocity || [0, 0, 0],
           Boolean(msg.ridingScooter),
           msg.playerName,
-          msg.team,
+          store.selectedModeId === 'FFA' ? 'bravo' : msg.team,
           Boolean(msg.sliding)
         );
+      }
+    } else if (msg.type === 'lobby:update') {
+      if (msg.mapId && msg.mapId !== store.selectedMapId) {
+        store.setMapId(msg.mapId);
+      }
+      if (msg.modeId && msg.modeId !== store.selectedModeId) {
+        store.setModeId(msg.modeId);
       }
     } else if (msg.type === 'combat:event' || msg.type === 'combat:hit') {
       const stunMs = Number(msg.stunDurationMs) || 0;
@@ -398,7 +505,27 @@ class LocalMultiplayerManager {
   }
 
   /**
-   * 50Hz (20ms) network tick rate sending position, velocity, rotation, ADS, slide/crouch, and scooter state.
+   * Periodically cleans up disconnected peers so ghost players never remain in the arena.
+   */
+  private startPeerCleanupLoop() {
+    if (this.cleanupInterval) window.clearInterval(this.cleanupInterval);
+    this.cleanupInterval = window.setInterval(() => {
+      const store = useGameStore.getState();
+      const now = Date.now();
+      Object.values(store.remotePlayers).forEach((actor) => {
+        if (!actor.isBot) {
+          const lastSeen = this.lastSeenMap.get(actor.id) || 0;
+          if (lastSeen > 0 && now - lastSeen > 4500) {
+            store.removeRemotePlayer(actor.id);
+            this.lastSeenMap.delete(actor.id);
+          }
+        }
+      });
+    }, 1000);
+  }
+
+  /**
+   * 40Hz (25ms) network tick rate sending position, velocity, rotation, ADS, slide/crouch, and scooter state.
    */
   private startTickLoop() {
     if (this.tickInterval) window.clearInterval(this.tickInterval);
@@ -426,7 +553,7 @@ class LocalMultiplayerManager {
         this.ws.send(JSON.stringify(packet));
       }
 
-      this.unreliableConnections.forEach((conn) => {
+      this.connections.forEach((conn) => {
         if (conn.open) {
           conn.send({ ...packet, type: 'player:moved' });
         }
@@ -435,7 +562,7 @@ class LocalMultiplayerManager {
       if (this.broadcastChannel) {
         this.broadcastChannel.postMessage({ ...packet, type: 'player:moved' });
       }
-    }, 20);
+    }, 25);
   }
 
   public sendHitscanEvent(
@@ -465,11 +592,7 @@ class LocalMultiplayerManager {
       this.ws.send(JSON.stringify(payload));
     }
 
-    const targetConns =
-      this.reliableConnections.size > 0
-        ? this.reliableConnections
-        : this.unreliableConnections;
-    targetConns.forEach((conn) => {
+    this.connections.forEach((conn) => {
       if (conn.open) {
         conn.send({ ...payload, type: 'combat:event' });
       }
@@ -496,6 +619,14 @@ class LocalMultiplayerManager {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(payload));
     }
+    this.connections.forEach((conn) => {
+      if (conn.open) {
+        conn.send(payload);
+      }
+    });
+    if (this.broadcastChannel) {
+      this.broadcastChannel.postMessage(payload);
+    }
   }
 
   public sendChatMessage(text: string) {
@@ -514,7 +645,7 @@ class LocalMultiplayerManager {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(payload));
     }
-    this.reliableConnections.forEach((conn) => {
+    this.connections.forEach((conn) => {
       if (conn.open) {
         conn.send(payload);
       }
@@ -526,4 +657,3 @@ class LocalMultiplayerManager {
 }
 
 export const multiplayerManager = new LocalMultiplayerManager();
-

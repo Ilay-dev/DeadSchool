@@ -26,6 +26,7 @@ export function GameOverScreen() {
   const setScreen = useGameStore((s) => s.setScreen);
   const selectClassAndDeploy = useGameStore((s) => s.selectClassAndDeploy);
   const selectedClass = useGameStore((s) => s.selectedClass);
+  const selectedModeId = useGameStore((s) => s.selectedModeId);
   const playerName = useGameStore((s) => s.playerName);
   const playerTeam = useGameStore((s) => s.playerTeam);
   const localKills = useGameStore((s) => s.localKills);
@@ -37,6 +38,8 @@ export function GameOverScreen() {
   const isLoggedIn = useGameStore((s) => s.isLoggedIn);
   const toggleLogin = useGameStore((s) => s.toggleLogin);
 
+  const isFfa = selectedModeId === 'FFA';
+
   const handlePlayAgain = () => {
     selectClassAndDeploy(selectedClass);
   };
@@ -46,7 +49,7 @@ export function GameOverScreen() {
   };
 
   // Compile team rosters with full stats
-  const { alphaRows, bravoRows } = useMemo(() => {
+  const { alphaRows, bravoRows, ffaRows } = useMemo(() => {
     const localEntry = {
       id: 'local',
       name: playerName,
@@ -111,9 +114,26 @@ export function GameOverScreen() {
       });
     }
 
+    const ffaList = [...all].sort((a, b) => b.score - a.score);
+    while (ffaList.length < 8) {
+      const idx = ffaList.length;
+      ffaList.push({
+        id: `mock_ffa_${idx}`,
+        name: `Player_${idx + 1}`,
+        team: 'alpha',
+        score: Math.max(120, 2600 - idx * 310),
+        kills: Math.max(1, 17 - idx * 2),
+        deaths: 3 + idx * 2,
+        weaponClass: fallbackWeapons[idx % fallbackWeapons.length],
+        ping: 18 + (idx % 3) * 8,
+        isLocal: false,
+      });
+    }
+
     return {
       alphaRows: aList.slice(0, 5).sort((a, b) => b.score - a.score),
       bravoRows: bList.slice(0, 5).sort((a, b) => b.score - a.score),
+      ffaRows: ffaList.slice(0, 8).sort((a, b) => b.score - a.score),
     };
   }, [playerName, playerTeam, localScore, localKills, localDeaths, selectedClass, remotePlayers]);
 
@@ -135,19 +155,37 @@ export function GameOverScreen() {
           </h1>
         </div>
 
-        {/* Score Banner: Blue Team Score (Left) vs Red Team Score (Right) (Image 1: 1 vs 3) */}
-        <div className="flex items-center justify-center mt-3 shadow-2xl">
-          <div className="flex items-center h-11 rounded overflow-hidden border border-white/20 shadow-[0_0_15px_rgba(0,0,0,0.8)]">
-            {/* Blue Team Score */}
-            <div className="w-24 h-full bg-[#1d4ed8] flex items-center justify-center text-[28px] font-black text-white px-4 border-r border-black/40">
-              {alphaScore}
-            </div>
-            {/* Red Team Score */}
-            <div className="w-24 h-full bg-[#b91c1c] flex items-center justify-center text-[28px] font-black text-white px-4">
-              {bravoScore}
+        {/* Score Banner: Blue vs Red for TDM, or Single Match Stats for FFA */}
+        {isFfa ? (
+          <div className="flex items-center justify-center mt-3 shadow-2xl">
+            <div className="flex items-center h-11 rounded overflow-hidden border border-amber-500/50 bg-black/80 px-6 gap-4 shadow-[0_0_15px_rgba(245,158,11,0.3)]">
+              <span className="text-sm font-black text-amber-400 uppercase tracking-widest">
+                ⚔️ FREE FOR ALL
+              </span>
+              <span className="text-white/30">|</span>
+              <span className="text-sm font-extrabold text-white">
+                DEINE KILLS: <span className="text-emerald-400 font-mono-num">{localKills}</span>
+              </span>
+              <span className="text-white/30">|</span>
+              <span className="text-sm font-extrabold text-white">
+                PUNKTE: <span className="text-amber-400 font-mono-num">{localScore}</span>
+              </span>
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="flex items-center justify-center mt-3 shadow-2xl">
+            <div className="flex items-center h-11 rounded overflow-hidden border border-white/20 shadow-[0_0_15px_rgba(0,0,0,0.8)]">
+              {/* Blue Team Score */}
+              <div className="w-24 h-full bg-[#1d4ed8] flex items-center justify-center text-[28px] font-black text-white px-4 border-r border-black/40">
+                {alphaScore}
+              </div>
+              {/* Red Team Score */}
+              <div className="w-24 h-full bg-[#b91c1c] flex items-center justify-center text-[28px] font-black text-white px-4">
+                {bravoScore}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Main Center Area: Left Sidebar (2v2 Event) + Scoreboard Table + Coin Reward */}
@@ -186,7 +224,7 @@ export function GameOverScreen() {
           </button>
         </div>
 
-        {/* Center: The Two-Team Scoreboard Table (Image 1) */}
+        {/* Center: The Scoreboard Table (FFA or TDM) */}
         <div className="relative w-full max-w-[620px]">
           {/* Badges floating above columns: 1st (Gold) & 2nd (Silver) */}
           <div className="absolute -top-6 left-[48%] -translate-x-1/2 flex items-center gap-16 pointer-events-none select-none">
@@ -208,77 +246,132 @@ export function GameOverScreen() {
             <div className="col-span-1 text-right pr-2">Ping</div>
           </div>
 
-          {/* Team Blue Rows (Top 5 rows, Image 1) */}
-          <div className="space-y-[2px] mb-2.5">
-            {alphaRows.map((row, idx) => {
-              const isHighlighted = row.isLocal;
-              return (
-                <div
-                  key={row.id}
-                  className={`grid grid-cols-12 items-center px-3 py-1.5 text-[15px] font-black text-white transition-all ${
-                    isHighlighted
-                      ? 'bg-[#1e40af]/90 border-2 border-[#93c5fd] shadow-[0_0_12px_rgba(147,197,253,0.5)] z-10 scale-[1.01]'
-                      : 'bg-[#1e3a8a]/75 border-b border-black/25'
-                  }`}
-                >
-                  <div className="col-span-5 flex items-center gap-2 truncate">
-                    <span className="font-mono-num text-white/80 text-sm w-4">{idx + 1}.</span>
-                    <span className="truncate">{row.name}</span>
+          {isFfa ? (
+            /* FFA Unified Leaderboard (All vs All) */
+            <div className="space-y-[2px] max-h-[300px] overflow-y-auto pr-0.5">
+              {ffaRows.map((row, idx) => {
+                const isHighlighted = row.isLocal;
+                const isTop3 = idx < 3;
+                return (
+                  <div
+                    key={row.id}
+                    className={`grid grid-cols-12 items-center px-3 py-1.5 text-[15px] font-black text-white transition-all ${
+                      isHighlighted
+                        ? 'bg-amber-600/90 border-2 border-amber-300 shadow-[0_0_14px_rgba(245,158,11,0.6)] z-10 scale-[1.01]'
+                        : isTop3
+                          ? 'bg-white/12 border-b border-white/10'
+                          : 'bg-white/5 border-b border-white/5'
+                    }`}
+                  >
+                    <div className="col-span-5 flex items-center gap-2 truncate">
+                      <span
+                        className={`font-mono-num text-sm w-5 font-black ${
+                          idx === 0
+                            ? 'text-yellow-400'
+                            : idx === 1
+                              ? 'text-slate-200'
+                              : idx === 2
+                                ? 'text-amber-500'
+                                : 'text-white/60'
+                        }`}
+                      >
+                        {idx + 1}.
+                      </span>
+                      <span className="truncate">{row.name} {row.isLocal && '(Du)'}</span>
+                    </div>
+                    <div className="col-span-2 text-center font-mono-num font-bold">
+                      {formatScore(row.score)}
+                    </div>
+                    <div className="col-span-1 text-center font-mono-num">{row.kills}</div>
+                    <div className="col-span-1 text-center font-mono-num">{row.deaths}</div>
+                    <div className="col-span-2 flex justify-center">
+                      <WeaponHudSilhouette
+                        weaponId={row.weaponClass}
+                        className="w-16 h-5 text-white fill-current"
+                      />
+                    </div>
+                    <div className="col-span-1 flex justify-end pr-2">
+                      <PingBars pingMs={row.ping} />
+                    </div>
                   </div>
-                  <div className="col-span-2 text-center font-mono-num font-bold">
-                    {formatScore(row.score)}
-                  </div>
-                  <div className="col-span-1 text-center font-mono-num">{row.kills}</div>
-                  <div className="col-span-1 text-center font-mono-num">{row.deaths}</div>
-                  <div className="col-span-2 flex justify-center">
-                    <WeaponHudSilhouette
-                      weaponId={row.weaponClass}
-                      className="w-16 h-5 text-white fill-current"
-                    />
-                  </div>
-                  <div className="col-span-1 flex justify-end pr-2">
-                    <PingBars pingMs={row.ping} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          ) : (
+            <>
+              {/* Team Blue Rows (Top 5 rows, Image 1) */}
+              <div className="space-y-[2px] mb-2.5">
+                {alphaRows.map((row, idx) => {
+                  const isHighlighted = row.isLocal;
+                  return (
+                    <div
+                      key={row.id}
+                      className={`grid grid-cols-12 items-center px-3 py-1.5 text-[15px] font-black text-white transition-all ${
+                        isHighlighted
+                          ? 'bg-[#1e40af]/90 border-2 border-[#93c5fd] shadow-[0_0_12px_rgba(147,197,253,0.5)] z-10 scale-[1.01]'
+                          : 'bg-[#1e3a8a]/75 border-b border-black/25'
+                      }`}
+                    >
+                      <div className="col-span-5 flex items-center gap-2 truncate">
+                        <span className="font-mono-num text-white/80 text-sm w-4">{idx + 1}.</span>
+                        <span className="truncate">{row.name}</span>
+                      </div>
+                      <div className="col-span-2 text-center font-mono-num font-bold">
+                        {formatScore(row.score)}
+                      </div>
+                      <div className="col-span-1 text-center font-mono-num">{row.kills}</div>
+                      <div className="col-span-1 text-center font-mono-num">{row.deaths}</div>
+                      <div className="col-span-2 flex justify-center">
+                        <WeaponHudSilhouette
+                          weaponId={row.weaponClass}
+                          className="w-16 h-5 text-white fill-current"
+                        />
+                      </div>
+                      <div className="col-span-1 flex justify-end pr-2">
+                        <PingBars pingMs={row.ping} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
 
-          {/* Team Red Rows (Bottom 5 rows, Image 1) */}
-          <div className="space-y-[2px]">
-            {bravoRows.map((row, idx) => {
-              const isHighlighted = row.isLocal;
-              return (
-                <div
-                  key={row.id}
-                  className={`grid grid-cols-12 items-center px-3 py-1.5 text-[15px] font-black text-white transition-all ${
-                    isHighlighted
-                      ? 'bg-[#991b1b]/95 border-2 border-[#fca5a5] shadow-[0_0_12px_rgba(252,165,165,0.5)] z-10 scale-[1.01]'
-                      : 'bg-[#991b1b]/75 border-b border-black/25'
-                  }`}
-                >
-                  <div className="col-span-5 flex items-center gap-2 truncate">
-                    <span className="font-mono-num text-white/80 text-sm w-4">{idx + 1}.</span>
-                    <span className="truncate">{row.name}</span>
-                  </div>
-                  <div className="col-span-2 text-center font-mono-num font-bold">
-                    {formatScore(row.score)}
-                  </div>
-                  <div className="col-span-1 text-center font-mono-num">{row.kills}</div>
-                  <div className="col-span-1 text-center font-mono-num">{row.deaths}</div>
-                  <div className="col-span-2 flex justify-center">
-                    <WeaponHudSilhouette
-                      weaponId={row.weaponClass}
-                      className="w-16 h-5 text-white fill-current"
-                    />
-                  </div>
-                  <div className="col-span-1 flex justify-end pr-2">
-                    <PingBars pingMs={row.ping} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+              {/* Team Red Rows (Bottom 5 rows, Image 1) */}
+              <div className="space-y-[2px]">
+                {bravoRows.map((row, idx) => {
+                  const isHighlighted = row.isLocal;
+                  return (
+                    <div
+                      key={row.id}
+                      className={`grid grid-cols-12 items-center px-3 py-1.5 text-[15px] font-black text-white transition-all ${
+                        isHighlighted
+                          ? 'bg-[#991b1b]/95 border-2 border-[#fca5a5] shadow-[0_0_12px_rgba(252,165,165,0.5)] z-10 scale-[1.01]'
+                          : 'bg-[#991b1b]/75 border-b border-black/25'
+                      }`}
+                    >
+                      <div className="col-span-5 flex items-center gap-2 truncate">
+                        <span className="font-mono-num text-white/80 text-sm w-4">{idx + 1}.</span>
+                        <span className="truncate">{row.name}</span>
+                      </div>
+                      <div className="col-span-2 text-center font-mono-num font-bold">
+                        {formatScore(row.score)}
+                      </div>
+                      <div className="col-span-1 text-center font-mono-num">{row.kills}</div>
+                      <div className="col-span-1 text-center font-mono-num">{row.deaths}</div>
+                      <div className="col-span-2 flex justify-center">
+                        <WeaponHudSilhouette
+                          weaponId={row.weaponClass}
+                          className="w-16 h-5 text-white fill-current"
+                        />
+                      </div>
+                      <div className="col-span-1 flex justify-end pr-2">
+                        <PingBars pingMs={row.ping} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
 
           {/* Gold Coin Reward Badge: "+11 🟡" (Image 1: right side of Red table rows) */}
           <div className="absolute -right-16 bottom-6 flex items-center gap-1 text-[16px] font-black text-white drop-shadow">

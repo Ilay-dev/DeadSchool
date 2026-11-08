@@ -213,10 +213,10 @@ export const WEAPON_LIST: WeaponStats[] = [
 // Player Physics, Capsule, Slide (Shift), E-Scooter & Pickup Constants
 export const PLAYER_DIMENSIONS = {
   totalHeight: 1.8, // 1.80m total standing height
-  capsuleRadius: 0.4, // 0.40m radius
-  cylinderHeight: 1.0, // 1.0m cylinder + 2 * 0.4m hemispheres = 1.80m
+  capsuleRadius: 0.3, // 0.30m radius (smooth doorway & stair clearance)
+  cylinderHeight: 1.2, // 1.2m cylinder + 2 * 0.3m hemispheres = 1.80m
   crouchTotalHeight: 0.9, // 0.90m crouched/sliding height
-  crouchCylinderHeight: 0.1, // 0.1m cylinder + 2 * 0.4m hemispheres = 0.90m
+  crouchCylinderHeight: 0.3, // 0.3m cylinder + 2 * 0.3m hemispheres = 0.90m
   standingCameraOffsetFromCenter: 0.75, // +0.75m above capsule center -> 1.65m eye height
   standingEyeHeight: 1.65, // 0.90m center + 0.75m = 1.65m
   crouchingEyeHeight: 0.8, // 0.80m above ground when crouched/sliding
@@ -232,7 +232,7 @@ export const PLAYER_DIMENSIONS = {
   gravity: -22.0, // -22.0 m/s^2
   jumpHeight: 1.2, // 1.2m jump height
   jumpVelocity: Math.sqrt(2 * 22.0 * 1.2), // v = sqrt(2 * g * h) ≈ 7.266 m/s
-  maxStepHeight: 0.35, // 0.35m step climbing height
+  maxStepHeight: 0.4, // 0.40m step climbing height (stairs & curbs)
 } as const;
 
 /**

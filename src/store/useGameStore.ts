@@ -383,6 +383,7 @@ export interface GameStoreState {
     team?: 'alpha' | 'bravo',
     sliding?: boolean
   ) => void;
+  removeRemotePlayer: (id: string) => void;
   damageRemoteActor: (
     targetId: string,
     damage: number,
@@ -1536,6 +1537,14 @@ export const useGameStore = create<GameStoreState>()(
               },
             },
           };
+        }),
+
+      removeRemotePlayer: (id) =>
+        set((state) => {
+          if (!state.remotePlayers[id]) return state;
+          const next = { ...state.remotePlayers };
+          delete next[id];
+          return { remotePlayers: next };
         }),
 
       damageRemoteActor: (

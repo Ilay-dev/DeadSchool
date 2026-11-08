@@ -453,6 +453,8 @@ export function InGameHudOverlay() {
   const selectedModeId = useGameStore((s) => s.selectedModeId);
   const alphaScore = useGameStore((s) => s.alphaScore);
   const bravoScore = useGameStore((s) => s.bravoScore);
+  const localKills = useGameStore((s) => s.localKills);
+  const localScore = useGameStore((s) => s.localScore);
   const matchTimeRemaining = useGameStore((s) => s.matchTimeRemaining);
   const damageFlashAlpha = useGameStore((s) => s.damageFlashAlpha);
   const keybinds = useGameStore((s) => s.settings.keybinds);
@@ -590,49 +592,97 @@ export function InGameHudOverlay() {
         </div>
       )}
 
-      {/* Top-Center Score Bar (exact match to Screenshots 1, 2, 3: Blue gradient | TDM 4:26 | Red gradient) */}
-      <div className="fixed top-3 left-1/2 -translate-x-1/2 flex items-stretch h-14 shadow-lg">
-        {/* Alpha Score Box */}
-        <div
-          className="w-24 flex items-center justify-center border-r-6 border-[#2b7fff]"
-          style={{
-            background:
-              'linear-gradient(90deg, rgba(43,127,255,0.08) 0%, rgba(43,127,255,0.55) 100%)',
-          }}
-        >
-          <span
-            data-testid="hud-alpha-score"
-            className="text-[32px] font-extrabold font-mono-num text-white drop-shadow"
-          >
-            {alphaScore}
-          </span>
-        </div>
+      {/* Top-Center Score Bar */}
+      <div className="fixed top-3 left-1/2 -translate-x-1/2 flex items-stretch h-14 shadow-lg bg-black/60 border border-white/15">
+        {selectedModeId === 'FFA' ? (
+          <>
+            {/* FFA Left: Player's Personal Kills */}
+            <div
+              className="px-4 flex flex-col items-center justify-center border-r border-white/15"
+              style={{
+                background:
+                  'linear-gradient(90deg, rgba(16,185,129,0.12) 0%, rgba(16,185,129,0.45) 100%)',
+              }}
+            >
+              <span className="text-[10px] font-black uppercase text-emerald-300 tracking-wider">
+                DEINE KILLS
+              </span>
+              <span className="text-[26px] font-extrabold font-mono-num text-white leading-tight">
+                {localKills}
+              </span>
+            </div>
 
-        {/* Center Mode & Timer Box */}
-        <div className="w-32 bg-black/55 flex flex-col items-center justify-center px-3">
-          <span className="text-[14px] font-extrabold text-white/65 tracking-wider uppercase leading-none">
-            {selectedModeId}
-          </span>
-          <span className="text-[28px] font-extrabold font-mono-num text-white leading-tight">
-            {timeFormatted}
-          </span>
-        </div>
+            {/* Center FFA Mode & Timer Box */}
+            <div className="w-36 bg-black/60 flex flex-col items-center justify-center px-3">
+              <span className="text-[12px] font-black text-amber-400 tracking-wider uppercase leading-none">
+                FREE FOR ALL
+              </span>
+              <span className="text-[28px] font-extrabold font-mono-num text-white leading-tight">
+                {timeFormatted}
+              </span>
+            </div>
 
-        {/* Bravo Score Box */}
-        <div
-          className="w-24 flex items-center justify-center border-l-6 border-[#e74c3c]"
-          style={{
-            background:
-              'linear-gradient(270deg, rgba(231,76,60,0.08) 0%, rgba(231,76,60,0.55) 100%)',
-          }}
-        >
-          <span
-            data-testid="hud-bravo-score"
-            className="text-[32px] font-extrabold font-mono-num text-white drop-shadow"
-          >
-            {bravoScore}
-          </span>
-        </div>
+            {/* FFA Right: Player's Personal Score */}
+            <div
+              className="px-4 flex flex-col items-center justify-center border-l border-white/15"
+              style={{
+                background:
+                  'linear-gradient(270deg, rgba(245,158,11,0.12) 0%, rgba(245,158,11,0.45) 100%)',
+              }}
+            >
+              <span className="text-[10px] font-black uppercase text-amber-300 tracking-wider">
+                PUNKTE
+              </span>
+              <span className="text-[26px] font-extrabold font-mono-num text-white leading-tight">
+                {localScore}
+              </span>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Alpha Score Box */}
+            <div
+              className="w-24 flex items-center justify-center border-r-6 border-[#2b7fff]"
+              style={{
+                background:
+                  'linear-gradient(90deg, rgba(43,127,255,0.08) 0%, rgba(43,127,255,0.55) 100%)',
+              }}
+            >
+              <span
+                data-testid="hud-alpha-score"
+                className="text-[32px] font-extrabold font-mono-num text-white drop-shadow"
+              >
+                {alphaScore}
+              </span>
+            </div>
+
+            {/* Center Mode & Timer Box */}
+            <div className="w-32 bg-black/55 flex flex-col items-center justify-center px-3">
+              <span className="text-[14px] font-extrabold text-white/65 tracking-wider uppercase leading-none">
+                {selectedModeId}
+              </span>
+              <span className="text-[28px] font-extrabold font-mono-num text-white leading-tight">
+                {timeFormatted}
+              </span>
+            </div>
+
+            {/* Bravo Score Box */}
+            <div
+              className="w-24 flex items-center justify-center border-l-6 border-[#e74c3c]"
+              style={{
+                background:
+                  'linear-gradient(270deg, rgba(231,76,60,0.08) 0%, rgba(231,76,60,0.55) 100%)',
+              }}
+            >
+              <span
+                data-testid="hud-bravo-score"
+                className="text-[32px] font-extrabold font-mono-num text-white drop-shadow"
+              >
+                {bravoScore}
+              </span>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Top-Right Killfeed (exact match to Screenshots 1 & 3 with weapon silhouette + headshot crosshair) */}
