@@ -1,0 +1,6 @@
+{
+  "name": "DEADSHOT.io Tactical FPS",
+  "description": "High-performance 3D browser tactical first-person shooter with LAN/WebRTC multiplayer, custom crosshair editor, class selection, and multi-map CTF/TDM arenas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
